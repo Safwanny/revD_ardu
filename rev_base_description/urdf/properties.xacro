@@ -1,0 +1,155 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Mecanum 01 Rev D. REP-103: +X forward, +Y left, +Z up, SI units.
+       Dimensions from the Rev D README (builds/Rev_D); the meshes come from
+       scripts/split_rev_d_mesh.py, which checks the same numbers. -->
+
+  <!-- Hull bounding box. The underside sits 11.56 mm off the ground. -->
+  <xacro:property name="hull_length" value="0.2959"/>
+  <xacro:property name="hull_width" value="0.1688"/>
+  <xacro:property name="hull_height" value="0.049"/>
+  <xacro:property name="hull_bottom_z" value="0.01156"/>
+
+  <!-- 60 mm printed mecanum wheel: roller envelope 59.92, 31.5 over the
+       plates. FL and RR are hand A, FR and RL hand B. -->
+  <xacro:property name="wheel_radius" value="0.02996"/>
+  <xacro:property name="wheel_width" value="0.0315"/>
+  <!-- wheelbase: front-to-rear axle spacing; wheel_separation: track. -->
+  <xacro:property name="wheelbase" value="0.210"/>
+  <xacro:property name="wheel_separation" value="0.1865"/>
+
+  <!-- base_link sits on the axle line, so the wheel joints are at z = 0. -->
+  <xacro:property name="base_link_height" value="${wheel_radius}"/>
+
+  <!-- JGY370 worm motor, direct drive. 100 rpm assumed until the real
+       gearing is known: 10.47 rad/s, 0.31 m/s at the wheel. -->
+  <xacro:property name="wheel_max_velocity" value="10.47"/>
+  <xacro:property name="wheel_joint_damping" value="0.001"/>
+  <xacro:property name="wheel_joint_friction" value="0.001"/>
+
+  <!-- Mass estimate from the BOM: 4 x JGY370 (~0.14), printed hull and deck,
+       battery and electronics. The wheel carries its drive line too (rollers,
+       hub, axle, coupler, motor shaft). Calibration knobs, not measurements:
+       weigh the built robot and put the numbers here. -->
+  <xacro:property name="body_mass" value="1.40"/>
+  <xacro:property name="body_com_z" value="0.030"/>
+  <xacro:property name="wheel_mass" value="0.08"/>
+
+  <!-- Deck plate top face; its M3 insert grid is 20 mm pitch, rows at
+       x = 60 .. -60 mm, columns at y = +-10 and +-30 mm. -->
+  <xacro:property name="deck_top_z" value="0.05806"/>
+
+  <!-- 360-degree planar LiDAR, shaped after the D500 kit: square fixed base,
+       cylindrical rotating head. Bolted on the deck grid over rows 2-3 from
+       the front and the middle two columns, holes (40, +-10) and (20, +-10)
+       mm, so its centre is x = 30 mm on the centreline. It stands on
+       lidar_standoff M3 standoffs so the scan plane (lidar_link, mid height
+       of the head) clears the top of the ToF camera in front of it. -->
+  <xacro:property name="lidar_base_size" value="0.048"/>
+  <xacro:property name="lidar_base_height" value="0.010"/>
+  <xacro:property name="lidar_head_radius" value="0.019"/>
+  <xacro:property name="lidar_head_height" value="0.010"/>
+  <xacro:property name="lidar_height"
+                  value="${lidar_base_height + lidar_head_height}"/>
+  <xacro:property name="lidar_collision_z" value="${-lidar_base_height / 2.0}"/>
+  <xacro:property name="lidar_mass" value="0.10"/>
+  <xacro:property name="lidar_standoff" value="0.030"/>
+  <xacro:property name="lidar_x" value="0.030"/>
+  <xacro:property name="lidar_y" value="0.0"/>
+  <xacro:property name="lidar_z"
+                  value="${deck_top_z + lidar_standoff + lidar_base_height
+                           + lidar_head_height / 2.0 - base_link_height}"/>
+  <xacro:property name="lidar_samples" value="720"/>
+  <xacro:property name="lidar_update_rate" value="10.0"/>
+  <xacro:property name="lidar_min_angle" value="${-pi}"/>
+  <xacro:property name="lidar_max_angle" value="${pi}"/>
+  <xacro:property name="lidar_min_range" value="0.10"/>
+  <xacro:property name="lidar_max_range" value="4.0"/>
+  <xacro:property name="lidar_range_resolution" value="0.01"/>
+  <xacro:property name="lidar_noise_mean" value="0.0"/>
+  <xacro:property name="lidar_noise_stddev" value="0.01"/>
+
+  <!-- ToF ring: four VL53L7CX on Pololu #3418 carriers, one at the centre
+       of each hull face. The hull faces lean down 14.86 deg (front/rear) and
+       9.27 deg (sides), plane fits of meshes/rev_d/body.stl, but every sensor
+       is pitched down tof_pitch instead, so one zone row sits level and
+       reaches as far as the part can see. The CAD needs a 3.61 deg wedge
+       (thick at the bottom) on the front and rear faces and a 1.98 deg wedge
+       (thick at the top) on the sides, or faces redrawn at 11.25 deg. -->
+  <!-- Carrier, from Pololu's dimension drawing (irs18a, 2023-07-26): PCB
+       12.7 x 17.8 x 1.02 mm, components at most 1.6 mm above it, 0.5 g.
+       It stands with its long side vertical. The sensor centre is 7.6 mm
+       from the header edge and 8.8 mm up from the bottom edge, so the board
+       centre sits 1.25 mm to the header side of the aperture and 0.1 mm
+       above it. For the CAD: 2 x 2.18 mm holes (M2), 2.5 mm in from the
+       non-header edge and from top and bottom; 8 header pads at 2.54 mm
+       pitch, 1.27 mm in from the other edge. -->
+  <xacro:property name="tof_board_width" value="0.0127"/>
+  <xacro:property name="tof_board_length" value="0.0178"/>
+  <xacro:property name="tof_pcb_thickness" value="0.00102"/>
+  <xacro:property name="tof_board_offset_y" value="-0.00125"/>
+  <xacro:property name="tof_board_offset_z" value="0.0001"/>
+  <xacro:property name="tof_mass" value="0.0005"/>
+  <!-- VL53L7CX package, 6.4 x 3.0 mm, long side across the board, standing
+       the drawing's 1.6 mm above the PCB. -->
+  <xacro:property name="tof_module_length" value="0.0064"/>
+  <xacro:property name="tof_module_width" value="0.003"/>
+  <xacro:property name="tof_module_height" value="0.0016"/>
+  <xacro:property name="tof_board_thickness"
+                  value="${tof_pcb_thickness + tof_module_height}"/>
+  <!-- 8 x 8 zones over 60 x 60 degrees; Gazebo rays sit at zone centres,
+       half a zone inside the field edge. -->
+  <xacro:property name="tof_fov" value="${radians(60)}"/>
+  <xacro:property name="tof_zones" value="8"/>
+  <xacro:property name="tof_zone_angle" value="${tof_fov / tof_zones}"/>
+  <xacro:property name="tof_half_span"
+                  value="${tof_fov / 2.0 - tof_zone_angle / 2.0}"/>
+  <xacro:property name="tof_min_range" value="0.02"/>
+  <xacro:property name="tof_max_range" value="3.5"/>
+  <xacro:property name="tof_range_resolution" value="0.001"/>
+  <xacro:property name="tof_update_rate" value="15.0"/>
+  <xacro:property name="tof_noise_mean" value="0.0"/>
+  <xacro:property name="tof_noise_stddev" value="0.01"/>
+  <!-- Zone rows sit at -26.25 + 7.5 * row deg off the axis, so pitching
+       down 1.5 zones (11.25 deg) puts row 5 exactly level. Calibration knob:
+       measure the printed mount and put the angle here. -->
+  <xacro:property name="tof_pitch" value="${1.5 * tof_zone_angle}"/>
+  <!-- Aperture 32 mm off the ground, mid height of the faces. The faces are
+       planes n.p = d (mm, ground frame): front 0.9666 x - 0.2564 z = 129.42,
+       side 0.9869 y - 0.1611 z = 75.11, solved here at that height. -->
+  <xacro:property name="tof_ground_z" value="0.032"/>
+  <xacro:property name="tof_z" value="${tof_ground_z - base_link_height}"/>
+  <xacro:property name="tof_front_x"
+                  value="${(0.12942 + 0.2564 * tof_ground_z) / 0.9666}"/>
+  <xacro:property name="tof_side_y"
+                  value="${(0.07511 + 0.1611 * tof_ground_z) / 0.9869}"/>
+
+  <!-- Arducam ToF camera (B0410): 240 x 180 depth, 62.8 x 37.9 deg field,
+       0.2-4 m (far mode), 30 fps, 940 nm. Board 38 x 38 mm, standing upright
+       on the deck in front of the LiDAR, on an L bracket screwed to deck
+       holes (60, +-10) mm, looking straight ahead. Arducam publishes no
+       thickness, lens position or hole pattern; tof_camera_pcb_thickness,
+       tof_camera_lens_depth and the lens sitting at the board centre are
+       estimates, to replace from Arducam's STEP model. -->
+  <xacro:property name="tof_camera_board_size" value="0.038"/>
+  <xacro:property name="tof_camera_pcb_thickness" value="0.0016"/>
+  <xacro:property name="tof_camera_lens_depth" value="0.008"/>
+  <xacro:property name="tof_camera_lens_radius" value="0.006"/>
+  <xacro:property name="tof_camera_mass" value="0.020"/>
+  <!-- Board back face 6 mm ahead of the bracket holes, bottom edge 2 mm off
+       the deck: top edge at 98 mm, 5 mm under the raised scan plane. -->
+  <xacro:property name="tof_camera_x"
+                  value="${0.066 + tof_camera_pcb_thickness}"/>
+  <xacro:property name="tof_camera_z"
+                  value="${deck_top_z + 0.002 + tof_camera_board_size / 2.0
+                           - base_link_height}"/>
+  <!-- Gazebo pixels are square, so 240 x 180 at 62.8 deg would see 49 deg
+       tall. 240 x 136 keeps both the real 62.8 and 37.9 deg. -->
+  <xacro:property name="tof_camera_hfov" value="${radians(62.8)}"/>
+  <xacro:property name="tof_camera_width" value="240"/>
+  <xacro:property name="tof_camera_height" value="136"/>
+  <xacro:property name="tof_camera_rate" value="30"/>
+  <xacro:property name="tof_camera_near" value="0.2"/>
+  <xacro:property name="tof_camera_far" value="4.0"/>
+
+</robot>

@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- The ToF camera as an rgbd_camera. It publishes <topic>/image,
+       /depth_image (32FC1, metres), /points and /camera_info. The real part
+       has no colour; its second image is IR amplitude. Gazebo's rgbd_camera
+       always renders rgb8, so the sim image is colour where the real one
+       will be grey. /points comes out x-forward, not optical, whatever the
+       frame says: tof_camera_points restamps it into tof_camera_lens_link. -->
+  <xacro:macro name="mobile_base_tof_camera_gazebo" params="prefix">
+    <gazebo reference="${prefix}tof_camera_link">
+      <sensor name="${prefix}tof_camera" type="rgbd_camera">
+        <always_on>true</always_on>
+        <update_rate>${tof_camera_rate}</update_rate>
+        <visualize>false</visualize>
+        <topic>/tof_camera</topic>
+        <pose>${tof_camera_lens_depth} 0 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>${tof_camera_hfov}</horizontal_fov>
+          <image>
+            <width>${tof_camera_width}</width>
+            <height>${tof_camera_height}</height>
+          </image>
+          <clip>
+            <near>${tof_camera_near}</near>
+            <far>${tof_camera_far}</far>
+          </clip>
+          <optical_frame_id>${prefix}tof_camera_optical_frame</optical_frame_id>
+        </camera>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+</robot>

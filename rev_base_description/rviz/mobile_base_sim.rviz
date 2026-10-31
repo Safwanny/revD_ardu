@@ -1,0 +1,258 @@
+Panels:
+- Class: rviz_common/Displays
+  Name: Displays
+Visualization Manager:
+  Class: ''
+  Displays:
+  - Class: rviz_default_plugins/Grid
+    Cell Size: 0.05
+    Plane Cell Count: 40
+    Name: Grid
+    Value: true
+  - Class: rviz_default_plugins/RobotModel
+    Description Source: Topic
+    Description Topic:
+      Value: /robot_description
+    Name: Robot Model
+    Value: true
+  - Class: rviz_default_plugins/TF
+    Enabled: false
+    Marker Scale: 0.15
+    Name: TF
+    Show Arrows: false
+    Show Axes: true
+    Show Names: false
+    Value: false
+  - Alpha: 1
+    Autocompute Intensity Bounds: true
+    Autocompute Value Bounds:
+      Max Value: 10
+      Min Value: -10
+      Value: true
+    Axis: Z
+    Channel Name: intensity
+    Class: rviz_default_plugins/LaserScan
+    Color: 170; 140; 255
+    Color Transformer: FlatColor
+    Decay Time: 0.25
+    Enabled: true
+    Name: LiDAR Scan
+    Position Transformer: XYZ
+    Selectable: true
+    Size (Pixels): 3
+    Size (m): 0.01
+    Style: Points
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Best Effort
+      Value: /scan
+    Use Fixed Frame: true
+    Use rainbow: false
+    Value: true
+  - Class: rviz_common/Group
+    Displays:
+    - Class: rviz_common/Group
+      Displays:
+      - Alpha: 1
+        Autocompute Intensity Bounds: true
+        Class: rviz_default_plugins/PointCloud2
+        Color: 200; 210; 220
+        Color Transformer: FlatColor
+        Decay Time: 0
+        Enabled: true
+        Name: Front
+        Position Transformer: XYZ
+        Selectable: true
+        Size (Pixels): 3
+        Size (m): 0.004
+        Style: Points
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          History Policy: Keep Last
+          Reliability Policy: Best Effort
+          Value: /tof/front/rows
+        Use Fixed Frame: true
+        Value: true
+      - Alpha: 1
+        Autocompute Intensity Bounds: true
+        Class: rviz_default_plugins/PointCloud2
+        Color: 200; 210; 220
+        Color Transformer: FlatColor
+        Decay Time: 0
+        Enabled: true
+        Name: Left
+        Position Transformer: XYZ
+        Selectable: true
+        Size (Pixels): 3
+        Size (m): 0.004
+        Style: Points
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          History Policy: Keep Last
+          Reliability Policy: Best Effort
+          Value: /tof/left/rows
+        Use Fixed Frame: true
+        Value: true
+      - Alpha: 1
+        Autocompute Intensity Bounds: true
+        Class: rviz_default_plugins/PointCloud2
+        Color: 200; 210; 220
+        Color Transformer: FlatColor
+        Decay Time: 0
+        Enabled: true
+        Name: Rear
+        Position Transformer: XYZ
+        Selectable: true
+        Size (Pixels): 3
+        Size (m): 0.004
+        Style: Points
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          History Policy: Keep Last
+          Reliability Policy: Best Effort
+          Value: /tof/rear/rows
+        Use Fixed Frame: true
+        Value: true
+      - Alpha: 1
+        Autocompute Intensity Bounds: true
+        Class: rviz_default_plugins/PointCloud2
+        Color: 200; 210; 220
+        Color Transformer: FlatColor
+        Decay Time: 0
+        Enabled: true
+        Name: Right
+        Position Transformer: XYZ
+        Selectable: true
+        Size (Pixels): 3
+        Size (m): 0.004
+        Style: Points
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          History Policy: Keep Last
+          Reliability Policy: Best Effort
+          Value: /tof/right/rows
+        Use Fixed Frame: true
+        Value: true
+      Enabled: true
+      Name: Kept rows (4 sensors)
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Rays
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /tof/rays
+      Value: true
+    Enabled: true
+    Name: ToF ring
+  - Class: rviz_default_plugins/Odometry
+    Covariance:
+      Value: false
+    Enabled: false
+    Keep: 1
+    Name: Wheel Odometry
+    Shape:
+      Alpha: 1
+      Axes Length: 0.12
+      Axes Radius: 0.006
+      Value: Axes
+    Topic:
+      Value: /mobile_base_controller/odometry
+    Value: false
+  - Class: rviz_common/Group
+    Displays:
+    - Alpha: 1
+      Auto Size:
+        Auto Size Factor: 1
+        Value: true
+      Autocompute Value Bounds:
+        Max Value: 4
+        Min Value: 0
+        Value: true
+      Class: rviz_default_plugins/DepthCloud
+      Color: 255; 255; 255
+      Color Image Topic: /tof_camera/image
+      Color Transformer: RGB8
+      Decay Time: 0
+      Depth Map Topic: /tof_camera/depth_image
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: RGBD (DepthCloud)
+      Occlusion Compensation:
+        Occlusion Time-Out: 30
+        Value: false
+      Position Transformer: XYZ
+      Queue Size: 5
+      Selectable: true
+      Size (Pixels): 3
+      Style: Points
+      Topic Filter: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: AxisColor
+      Axis: Z
+      Decay Time: 0
+      Enabled: false
+      Name: Point cloud
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 2
+      Size (m): 0.01
+      Style: Points
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /tof_camera/points
+      Use Fixed Frame: true
+      Value: false
+    Enabled: true
+    Name: ToF camera
+  Enabled: true
+  Global Options:
+    Background Color: 36; 38; 42
+    Fixed Frame: odom
+    Frame Rate: 30
+  Name: root
+  Tools:
+  - Class: rviz_default_plugins/Interact
+    Hide Inactive Objects: true
+  - Class: rviz_default_plugins/MoveCamera
+  - Class: rviz_default_plugins/Select
+  - Class: rviz_default_plugins/FocusCamera
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 1.8
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0.03
+      Name: Odom Trajectory View
+      Near Clip Distance: 0.005
+      Pitch: 0.95
+      Target Frame: base_footprint
+      Value: Orbit (rviz)
+      Yaw: 0.75
+    Saved: null
+Window Geometry:
+  Height: 800
+  Width: 1200
