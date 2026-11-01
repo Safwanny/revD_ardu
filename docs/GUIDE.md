@@ -51,8 +51,8 @@ This opens three windows:
 The arguments (`gui`, `rviz`, `camera_windows`, `tof_markers`, spawn pose, and
 the rest) are listed in [ARCHITECTURE.md](../ARCHITECTURE.md#simulation-launch).
 
-To view the model alone, without Gazebo (`use_joint_state_gui:=true` adds
-wheel sliders):
+To view the model alone, without Gazebo, with sliders for the four wheels and
+the turret (`use_joint_state_gui:=false` holds them at zero):
 
 ```bash
 ros2 launch rev_base_description display.launch.py
@@ -96,11 +96,21 @@ released. The robot keeps its last command until the controller's 0.5 s
 `reference_timeout` runs out, which is about 7.5 cm at 0.15 m/s. Press `k` to
 stop on purpose.
 
+## Pan the turret
+
+Angle in radians, positive to the left, limited to ±135° (±2.356 rad):
+
+```bash
+ros2 topic pub --once /turret_controller/commands \
+  std_msgs/msg/Float64MultiArray "{data: [0.8]}"
+```
+
+The camera, its cloud and its depth image turn with it.
+
 ## Look at the sensors
 
 | Topic | What it is |
 | --- | --- |
-| `/scan` | LiDAR, `lidar_link` |
 | `/tof/<face>/points` | full 8 × 8 grid per ToF sensor, organised, misses non-finite |
 | `/tof/<face>/rows` | the kept rows only (4, 5, 6), 3 × 8 |
 | `/tof/rays` | RViz markers: one faint ray per kept zone, hits brighter than misses |
@@ -108,11 +118,12 @@ stop on purpose.
 | `/tof_camera/depth_colour` | the same, colour-graded, bgr8 |
 | `/tof_camera/points` | camera cloud in `tof_camera_lens_link` |
 | `/mobile_base_controller/odometry` | wheel odometry |
+| `/joint_states` | four wheels and `turret_pan_joint` |
 
 `<face>` is `front`, `rear`, `left` or `right`.
 
 ```bash
-ros2 topic hz /scan
+ros2 topic hz /tof_camera/depth_image
 ros2 topic hz /tof/front/rows
 ros2 topic echo --once /tof_camera/camera_info
 ros2 run tf2_ros tf2_echo odom base_footprint
@@ -138,10 +149,10 @@ colcon test-result --verbose
 
 | Test | Checks |
 | --- | --- |
-| `test_mecanum_wheels.py` | wheel positions, axes, meshes and hands against Rev D geometry |
+| `test_mecanum_wheels.py` | wheel positions, axes, meshes and hands against Rev D geometry; turret joint and limits |
 | `test_worlds.py` | each world parses, needs no downloads, and renders with `ogre2` |
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
-| `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic and the odometry TF |
+| `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic and the odometry TF; a turret command moves the pan joint |
 | `rev_base_tools/test/` | ToF grid order, row selection, depth colouring, `stop_simulation` matching |
 
 `test_sensor_topics.py` runs on its own `ROS_DOMAIN_ID` and `GZ_PARTITION`, set

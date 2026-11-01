@@ -16,13 +16,10 @@
 """
 Launch Gazebo headlessly and verify the Rev D sensor topic contract.
 
-Runs in my_world. The checks are on frame ids, message shape and finiteness,
-not world geometry. The one world-dependent requirement is that the LiDAR
-returns something finite: the robot spawns in the hall with walls 0.7 m away
-against a 4.0 m range.
+Runs in my_world. The checks are on frame ids and message shape, not world
+geometry, plus one actuation check: a turret command moves the pan joint.
 """
 
-import math
 import time
 import unittest
 
@@ -34,7 +31,8 @@ import launch_testing
 from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image, LaserScan, PointCloud2
+from sensor_msgs.msg import Image, JointState, PointCloud2
+from std_msgs.msg import Float64MultiArray
 from tf2_msgs.msg import TFMessage
 
 FACES = ('front', 'rear', 'left', 'right')
@@ -53,8 +51,7 @@ def generate_test_description():
             'rviz': 'false',
             'camera_windows': 'false',
             'use_sim_time': 'true',
-            # Software 'ogre' returns range_min on every LiDAR ray here, so
-            # the self-hit check below would test nothing; ogre2 needs a GPU.
+            # Software 'ogre' returns wrong ranges; ogre2 needs a GPU.
             'render_engine': 'ogre2',
         }.items(),
     )
@@ -80,7 +77,6 @@ class TestSensorTopics(unittest.TestCase):
 
     def test_sensor_and_odometry_messages(self):
         topics = {
-            '/scan': LaserScan,
             '/tof_camera/points': PointCloud2,
             '/tof_camera/depth_image': Image,
             '/mobile_base_controller/odometry': Odometry,
@@ -121,19 +117,6 @@ class TestSensorTopics(unittest.TestCase):
         self.assertEqual(missing, [], 'no message received')
         self.assertTrue(odom_tf_received, 'no odom -> base_footprint on /tf')
 
-        scan = received['/scan']
-        self.assertEqual(scan.header.frame_id, 'lidar_link')
-        self.assertGreater(scan.header.stamp.sec + scan.header.stamp.nanosec, 0)
-        self.assertGreater(len(scan.ranges), 100)
-        self.assertAlmostEqual(scan.range_max, 4.0, delta=0.01)
-        finite_ranges = [value for value in scan.ranges if math.isfinite(value)]
-        self.assertTrue(finite_ranges)
-        self.assertTrue(all(scan.range_min <= value <= scan.range_max
-                            for value in finite_ranges))
-        # The scan plane clears the hull, wheels and ToF camera: nothing of
-        # the robot itself may show up, so the closest return is a wall.
-        self.assertGreater(min(finite_ranges), 0.3)
-
         for face in FACES:
             grid = received[f'/tof/{face}/points']
             self.assertEqual(grid.header.frame_id, f'tof_{face}_link')
@@ -154,3 +137,26 @@ class TestSensorTopics(unittest.TestCase):
 
         for subscription in subscriptions:
             self.node.destroy_subscription(subscription)
+
+    def test_turret_follows_command(self):
+        target = 0.5
+        pan = None
+
+        def on_joints(message):
+            nonlocal pan
+            if 'turret_pan_joint' in message.name:
+                pan = message.position[message.name.index('turret_pan_joint')]
+
+        subscription = self.node.create_subscription(
+            JointState, '/joint_states', on_joints, 10)
+        publisher = self.node.create_publisher(
+            Float64MultiArray, '/turret_controller/commands', 10)
+        deadline = time.monotonic() + 90.0
+        while time.monotonic() < deadline and (
+                pan is None or abs(pan - target) > 0.02):
+            publisher.publish(Float64MultiArray(data=[target]))
+            rclpy.spin_once(self.node, timeout_sec=0.2)
+        self.node.destroy_subscription(subscription)
+        self.node.destroy_publisher(publisher)
+        self.assertIsNotNone(pan, 'turret_pan_joint not on /joint_states')
+        self.assertAlmostEqual(pan, target, delta=0.02)

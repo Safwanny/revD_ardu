@@ -324,6 +324,20 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('start_controller')),
         output='screen',
     )
+    turret_controller_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'turret_controller',
+            '--controller-manager',
+            'controller_manager',
+            '--switch-timeout',
+            '20.0',
+            '--service-call-timeout',
+            '20.0',
+        ],
+        output='screen',
+    )
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -354,6 +368,7 @@ def generate_launch_description():
         if event.returncode == 0:
             return [
                 base_controller_spawner,
+                turret_controller_spawner,
                 rviz,
             ]
         return [
@@ -453,7 +468,6 @@ def generate_launch_description():
                     '[gz.msgs.PointCloudPacked',
                     '/tof_camera/camera_info@sensor_msgs/msg/CameraInfo'
                     '[gz.msgs.CameraInfo',
-                    '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
                     # Each ToF sensor scans an 8x8 grid, so Gazebo publishes
                     # an organised cloud on <topic>/points beside the
                     # flattened scan. The cloud is the one that keeps the
