@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Validate the canonical four-wheel mecanum URDF."""
+"""Validate the four mecanum wheels and the turret pan joint in the URDF."""
 
 import math
 from pathlib import Path
@@ -106,12 +106,28 @@ def validate(xacro_file):
     control_joints = robot.findall('ros2_control/joint')
     assert [joint.attrib['name'] for joint in control_joints] == [
         'front_left_wheel_joint', 'front_right_wheel_joint',
-        'rear_right_wheel_joint', 'rear_left_wheel_joint']
+        'rear_right_wheel_joint', 'rear_left_wheel_joint', 'turret_pan_joint']
+    pan_control = control_joints.pop()
     for joint in control_joints:
         assert [item.attrib['name'] for item in joint.findall('command_interface')] \
             == ['velocity']
         assert [item.attrib['name'] for item in joint.findall('state_interface')] \
             == ['position', 'velocity']
+
+    # Turret: pan about +Z on the deck top, limited to the +-135 deg software
+    # limit, inside the +-138 deg hard stops.
+    pan = joints['turret_pan_joint']
+    assert pan.attrib['type'] == 'revolute'
+    assert pan.find('child').attrib['link'] == 'turret_link'
+    assert vector(pan.find('axis').attrib['xyz']) == (0.0, 0.0, 1.0)
+    limit = pan.find('limit')
+    assert math.isclose(float(limit.attrib['upper']), math.radians(135))
+    assert math.isclose(float(limit.attrib['lower']), -math.radians(135))
+    assert [item.attrib['name']
+            for item in pan_control.findall('command_interface')] == ['position']
+    camera = robot.find("joint[@name='turret_link_to_tof_camera_link_joint']")
+    assert camera.find('parent').attrib['link'] == 'turret_link'
+    assert 'lidar_link' not in links
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.urdf') as urdf_file:
         urdf_file.write(text)
@@ -127,4 +143,4 @@ def validate(xacro_file):
 
 if __name__ == '__main__':
     validate(Path(sys.argv[1]))
-    print('PASS canonical mecanum wheel description')
+    print('PASS mecanum wheels and turret description')

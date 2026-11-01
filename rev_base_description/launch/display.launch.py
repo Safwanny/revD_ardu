@@ -42,8 +42,8 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 'use_joint_state_gui',
-                default_value='false',
-                description='Use sliders for movable joints instead of a headless publisher.',
+                default_value='true',
+                description='Sliders for the wheels and turret; false holds them at zero.',
             ),
             Node(
                 package='robot_state_publisher',

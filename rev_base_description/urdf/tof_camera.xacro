@@ -1,52 +1,22 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <!-- Arducam ToF camera. tof_camera_link is the lens centre on the board's
-       front face, +X out through the lens; the board and lens barrel hang off
-       it. tof_camera_optical_frame is the same point in the optical
-       convention (+Z forward, +X right, +Y down) that the images and the
-       cloud are stamped in. -->
+  <!-- Arducam ToF camera on the turret. The board and its envelope are in
+       the turret mesh, so these are frames only:
+       tof_camera_link           lens centre on the board's front face, +X out
+                                 through the lens; the rgbd_camera hangs here
+       tof_camera_lens_link      the lens front, same axes: Gazebo's cloud frame
+       tof_camera_optical_frame  the lens front in the optical convention
+                                 (+Z forward, +X right, +Y down) that the
+                                 images are stamped in -->
   <xacro:macro name="mobile_base_tof_camera" params="prefix">
-    <link name="${prefix}tof_camera_link">
-      <visual>
-        <origin xyz="${-tof_camera_pcb_thickness / 2.0} 0 0" rpy="0 0 0"/>
-        <geometry>
-          <box size="${tof_camera_pcb_thickness} ${tof_camera_board_size}
-                     ${tof_camera_board_size}"/>
-        </geometry>
-        <material name="electronics_green"/>
-      </visual>
-      <visual>
-        <origin xyz="${tof_camera_lens_depth / 2.0} 0 0"
-                rpy="0 ${pi / 2.0} 0"/>
-        <geometry>
-          <cylinder radius="${tof_camera_lens_radius}"
-                    length="${tof_camera_lens_depth}"/>
-        </geometry>
-        <material name="sensor_grey"/>
-      </visual>
-      <collision>
-        <origin xyz="${(tof_camera_lens_depth - tof_camera_pcb_thickness) / 2.0}
-                     0 0" rpy="0 0 0"/>
-        <geometry>
-          <box size="${tof_camera_lens_depth + tof_camera_pcb_thickness}
-                     ${tof_camera_board_size} ${tof_camera_board_size}"/>
-        </geometry>
-      </collision>
-      <xacro:box_inertial mass="${tof_camera_mass}"
-                          x="${tof_camera_lens_depth + tof_camera_pcb_thickness}"
-                          y="${tof_camera_board_size}"
-                          z="${tof_camera_board_size}">
-        <origin xyz="0 0 0" rpy="0 0 0"/>
-      </xacro:box_inertial>
-    </link>
-
-    <joint name="${prefix}base_link_to_tof_camera_link_joint" type="fixed">
-      <parent link="${prefix}base_link"/>
+    <link name="${prefix}tof_camera_link"/>
+    <joint name="${prefix}turret_link_to_tof_camera_link_joint" type="fixed">
+      <parent link="${prefix}turret_link"/>
       <child link="${prefix}tof_camera_link"/>
-      <origin xyz="${tof_camera_x} 0 ${tof_camera_z}" rpy="0 0 0"/>
+      <origin xyz="${tof_camera_lens_x - tof_camera_lens_depth} 0
+                   ${tof_camera_lens_z}" rpy="0 0 0"/>
     </joint>
 
-    <!-- The lens front, axes as tof_camera_link: Gazebo's cloud frame. -->
     <link name="${prefix}tof_camera_lens_link"/>
     <joint name="${prefix}tof_camera_link_to_tof_camera_lens_link_joint"
            type="fixed">

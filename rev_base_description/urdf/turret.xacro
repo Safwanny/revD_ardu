@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- type_04M_Ardu pan turret. The pod, servo, pinion and post are fixed and
+       live in the body mesh; turret_link is what turns: 45T gear, platform,
+       cradle and the camera envelope. Its origin is the pan axis on the deck
+       top, so the mesh needs no offset. -->
+  <xacro:macro name="mobile_base_turret" params="prefix">
+    <link name="${prefix}turret_link">
+      <visual>
+        <geometry>
+          <mesh filename="package://rev_base_description/meshes/rev_d/turret.stl"/>
+        </geometry>
+        <material name="turret_blue"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 ${turret_collision_z}" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="${turret_radius}" length="${turret_height}"/>
+        </geometry>
+      </collision>
+      <xacro:cylinder_inertial mass="${turret_mass}" radius="${turret_radius}"
+                               length="${turret_height}">
+        <origin xyz="0 0 ${turret_collision_z}" rpy="0 0 0"/>
+      </xacro:cylinder_inertial>
+    </link>
+
+    <!-- Joint name is coupled to ros2_control and controller YAML. -->
+    <joint name="${prefix}turret_pan_joint" type="revolute">
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}turret_link"/>
+      <origin xyz="${turret_x} 0 ${turret_z}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <dynamics damping="${turret_damping}"/>
+      <limit lower="${-turret_limit}" upper="${turret_limit}"
+             effort="${turret_max_effort}" velocity="${turret_max_velocity}"/>
+    </joint>
+  </xacro:macro>
+</robot>

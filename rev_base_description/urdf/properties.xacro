@@ -1,12 +1,14 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <!-- Mecanum 01 Rev D. REP-103: +X forward, +Y left, +Z up, SI units.
-       Dimensions from the Rev D README (builds/Rev_D); the meshes come from
-       scripts/split_rev_d_mesh.py, which checks the same numbers. -->
+  <!-- Mecanum 01 Rev D v4 with the type_04M_Ardu pan turret
+       (builds/Rev_D_T4M_ardu). REP-103: +X forward, +Y left, +Z up, SI units.
+       Dimensions from the Rev D and turret READMEs; the meshes come from
+       scripts/import_rev_d_meshes.py, which checks the same numbers. -->
 
-  <!-- Hull bounding box. The underside sits 11.56 mm off the ground. -->
-  <xacro:property name="hull_length" value="0.2959"/>
-  <xacro:property name="hull_width" value="0.1688"/>
+  <!-- Hull bounding box (Rev D clearance_check.txt). The underside sits
+       11.56 mm off the ground. -->
+  <xacro:property name="hull_length" value="0.2969"/>
+  <xacro:property name="hull_width" value="0.1681"/>
   <xacro:property name="hull_height" value="0.049"/>
   <xacro:property name="hull_bottom_z" value="0.01156"/>
 
@@ -36,46 +38,16 @@
   <xacro:property name="wheel_mass" value="0.08"/>
 
   <!-- Deck plate top face; its M3 insert grid is 20 mm pitch, rows at
-       x = 60 .. -60 mm, columns at y = +-10 and +-30 mm. -->
+       x = 60 .. -60 mm, columns at y = +-10 and +-30 mm. The turret's
+       Deck_plate_T drops (0, +-10), (0, 30) and (40, +-10). -->
   <xacro:property name="deck_top_z" value="0.05806"/>
 
-  <!-- 360-degree planar LiDAR, shaped after the D500 kit: square fixed base,
-       cylindrical rotating head. Bolted on the deck grid over rows 2-3 from
-       the front and the middle two columns, holes (40, +-10) and (20, +-10)
-       mm, so its centre is x = 30 mm on the centreline. It stands on
-       lidar_standoff M3 standoffs so the scan plane (lidar_link, mid height
-       of the head) clears the top of the ToF camera in front of it. -->
-  <xacro:property name="lidar_base_size" value="0.048"/>
-  <xacro:property name="lidar_base_height" value="0.010"/>
-  <xacro:property name="lidar_head_radius" value="0.019"/>
-  <xacro:property name="lidar_head_height" value="0.010"/>
-  <xacro:property name="lidar_height"
-                  value="${lidar_base_height + lidar_head_height}"/>
-  <xacro:property name="lidar_collision_z" value="${-lidar_base_height / 2.0}"/>
-  <xacro:property name="lidar_mass" value="0.10"/>
-  <xacro:property name="lidar_standoff" value="0.030"/>
-  <xacro:property name="lidar_x" value="0.030"/>
-  <xacro:property name="lidar_y" value="0.0"/>
-  <xacro:property name="lidar_z"
-                  value="${deck_top_z + lidar_standoff + lidar_base_height
-                           + lidar_head_height / 2.0 - base_link_height}"/>
-  <xacro:property name="lidar_samples" value="720"/>
-  <xacro:property name="lidar_update_rate" value="10.0"/>
-  <xacro:property name="lidar_min_angle" value="${-pi}"/>
-  <xacro:property name="lidar_max_angle" value="${pi}"/>
-  <xacro:property name="lidar_min_range" value="0.10"/>
-  <xacro:property name="lidar_max_range" value="4.0"/>
-  <xacro:property name="lidar_range_resolution" value="0.01"/>
-  <xacro:property name="lidar_noise_mean" value="0.0"/>
-  <xacro:property name="lidar_noise_stddev" value="0.01"/>
-
   <!-- ToF ring: four VL53L7CX on Pololu #3418 carriers, one at the centre
-       of each hull face. The hull faces lean down 14.86 deg (front/rear) and
-       9.27 deg (sides), plane fits of meshes/rev_d/body.stl, but every sensor
-       is pitched down tof_pitch instead, so one zone row sits level and
-       reaches as far as the part can see. The CAD needs a 3.61 deg wedge
-       (thick at the bottom) on the front and rear faces and a 1.98 deg wedge
-       (thick at the top) on the sides, or faces redrawn at 11.25 deg. -->
+       of each hull face. Since Rev D v3 every hull wall leans 11.25 deg
+       (WALL_SLANT in the build script; plane fits of meshes/rev_d/body.stl
+       agree to 0.001 deg), its outward normal tipped down by that much. That
+       is exactly tof_pitch, so the carriers sit flush on the walls with no
+       wedge. -->
   <!-- Carrier, from Pololu's dimension drawing (irs18a, 2023-07-26): PCB
        12.7 x 17.8 x 1.02 mm, components at most 1.6 mm above it, 0.5 g.
        It stands with its long side vertical. The sensor centre is 7.6 mm
@@ -115,34 +87,43 @@
        measure the printed mount and put the angle here. -->
   <xacro:property name="tof_pitch" value="${1.5 * tof_zone_angle}"/>
   <!-- Aperture 32 mm off the ground, mid height of the faces. The faces are
-       planes n.p = d (mm, ground frame): front 0.9666 x - 0.2564 z = 129.42,
-       side 0.9869 y - 0.1611 z = 75.11, solved here at that height. -->
+       planes n.p = d (mm, ground frame): front 0.98079 x - 0.19509 z = 135.303,
+       side 0.98079 y - 0.19509 z = 72.533, solved here at that height. -->
   <xacro:property name="tof_ground_z" value="0.032"/>
   <xacro:property name="tof_z" value="${tof_ground_z - base_link_height}"/>
   <xacro:property name="tof_front_x"
-                  value="${(0.12942 + 0.2564 * tof_ground_z) / 0.9666}"/>
+                  value="${(0.135303 + 0.19509 * tof_ground_z) / 0.98079}"/>
   <xacro:property name="tof_side_y"
-                  value="${(0.07511 + 0.1611 * tof_ground_z) / 0.9869}"/>
+                  value="${(0.072533 + 0.19509 * tof_ground_z) / 0.98079}"/>
+
+  <!-- type_04M_Ardu turret: an STS3215 under the deck turns a 45T gear
+       platform through a 37T pinion (1.216 : 1). Pan axis at build
+       (35.79, 0) mm on the deck top. The hard stops are at +-138 deg; the
+       URDF limit is the +-135 deg software limit, because Gazebo enforces the
+       URDF limit and ignores ros2_control command bounds. Speed
+       and torque are the STS3215's through the gearing (export_ros2.py). The
+       mass is the CAD export's rough estimate: weigh it. -->
+  <xacro:property name="turret_x" value="0.03579"/>
+  <xacro:property name="turret_z" value="${deck_top_z - base_link_height}"/>
+  <xacro:property name="turret_limit" value="${radians(135)}"/>
+  <xacro:property name="turret_max_velocity" value="3.9"/>
+  <xacro:property name="turret_max_effort" value="2.3"/>
+  <xacro:property name="turret_mass" value="0.12"/>
+  <xacro:property name="turret_damping" value="0.01"/>
+  <!-- Collision: the head, a cylinder over the platform and cradle. -->
+  <xacro:property name="turret_radius" value="0.030"/>
+  <xacro:property name="turret_height" value="0.045"/>
+  <xacro:property name="turret_collision_z" value="0.040"/>
 
   <!-- Arducam ToF camera (B0410): 240 x 180 depth, 62.8 x 37.9 deg field,
-       0.2-4 m (far mode), 30 fps, 940 nm. Board 38 x 38 mm, standing upright
-       on the deck in front of the LiDAR, on an L bracket screwed to deck
-       holes (60, +-10) mm, looking straight ahead. Arducam publishes no
-       thickness, lens position or hole pattern; tof_camera_pcb_thickness,
-       tof_camera_lens_depth and the lens sitting at the board centre are
-       estimates, to replace from Arducam's STEP model. -->
-  <xacro:property name="tof_camera_board_size" value="0.038"/>
-  <xacro:property name="tof_camera_pcb_thickness" value="0.0016"/>
+       0.2-4 m (far mode), 30 fps, 940 nm. It rides the turret cradle, board
+       upright, looking along the turret's +X. The lens front is
+       tof_camera_lens_x/z from the pan joint (export_ros2.py TOF, at the
+       front of the camera envelope); the lens sitting at the board centre
+       and tof_camera_lens_depth are estimates until the B0410 is measured. -->
+  <xacro:property name="tof_camera_lens_x" value="0.017"/>
+  <xacro:property name="tof_camera_lens_z" value="0.0445"/>
   <xacro:property name="tof_camera_lens_depth" value="0.008"/>
-  <xacro:property name="tof_camera_lens_radius" value="0.006"/>
-  <xacro:property name="tof_camera_mass" value="0.020"/>
-  <!-- Board back face 6 mm ahead of the bracket holes, bottom edge 2 mm off
-       the deck: top edge at 98 mm, 5 mm under the raised scan plane. -->
-  <xacro:property name="tof_camera_x"
-                  value="${0.066 + tof_camera_pcb_thickness}"/>
-  <xacro:property name="tof_camera_z"
-                  value="${deck_top_z + 0.002 + tof_camera_board_size / 2.0
-                           - base_link_height}"/>
   <!-- Gazebo pixels are square, so 240 x 180 at 62.8 deg would see 49 deg
        tall. 240 x 136 keeps both the real 62.8 and 37.9 deg. -->
   <xacro:property name="tof_camera_hfov" value="${radians(62.8)}"/>

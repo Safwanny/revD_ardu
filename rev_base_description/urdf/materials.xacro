@@ -9,8 +9,8 @@
   <material name="electronics_green">
     <color rgba="0.10 0.45 0.22 1.0"/>
   </material>
-  <material name="lidar_base_grey">
-    <color rgba="0.24 0.26 0.29 1.0"/>
+  <material name="turret_blue">
+    <color rgba="0.45 0.70 0.85 1.0"/>
   </material>
   <material name="sensor_grey">
     <color rgba="0.55 0.58 0.62 1.0"/>

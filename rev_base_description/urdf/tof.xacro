@@ -8,11 +8,9 @@
        it along -X, which is into the body, because the macro is always called
        with the yaw that points +X out through the face.
 
-       This is the same split the LiDAR uses - lidar_link is the scan plane
-       rather than the body of the sensor - and for the same reason: the
-       optically meaningful point is the one every downstream consumer needs,
-       and burying it inside a mesh offset makes every later transform a
-       guess.
+       The optically meaningful point is the one every downstream consumer
+       needs, and burying it inside a mesh offset makes every later transform
+       a guess.
 
        pitch tilts +X down so one zone row is level; see tof_pitch. -->
   <xacro:macro name="mobile_base_tof" params="prefix name x y z pitch yaw">
@@ -65,7 +63,7 @@
 
   <!-- One sensor at the centre of each hull face. The four 60 degree fans
        cover 240 of 360 degrees; the 30 degree corner wedges are left to the
-       LiDAR. -->
+       turret camera. -->
   <xacro:macro name="mobile_base_tof_array" params="prefix">
     <xacro:mobile_base_tof prefix="${prefix}" name="front"
                            x="${tof_front_x}" y="0" z="${tof_z}"
