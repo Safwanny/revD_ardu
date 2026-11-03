@@ -1,6 +1,6 @@
 # GUIDE — building, running and inspecting Rev D
 
-Every command lives here. [ARCHITECTURE.md](../ARCHITECTURE.md) is the reference
+Every command lives here. [ARCHITECTURE.md](ARCHITECTURE.md) is the reference
 for frames, topics and dimensions.
 
 ## Two rules before anything else
@@ -49,7 +49,7 @@ This opens three windows:
   no return is black
 
 The arguments (`gui`, `rviz`, `camera_windows`, `tof_markers`, spawn pose, and
-the rest) are listed in [ARCHITECTURE.md](../ARCHITECTURE.md#simulation-launch).
+the rest) are listed in [ARCHITECTURE.md](ARCHITECTURE.md#simulation-launch).
 
 To view the model alone, without Gazebo, with sliders for the four wheels and
 the turret (`use_joint_state_gui:=false` holds them at zero):

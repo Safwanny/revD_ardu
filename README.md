@@ -48,7 +48,7 @@ Everything is simulation only. No hardware driver exists yet.
 
 | You want to | Read |
 | --- | --- |
-| Build, run, drive and inspect it | [docs/GUIDE.md](docs/GUIDE.md) |
+| Build, run, drive and inspect it | [GUIDE.md](GUIDE.md) |
 | Look up a frame, topic, dimension or design decision | [ARCHITECTURE.md](ARCHITECTURE.md) |
 
 ## Next
