@@ -12,7 +12,7 @@ turret panning and wheel + gyro odometry; nothing maps or plans yet. There is no
 | `rev_base_description` | `urdf/` Xacro model, `meshes/rev_d/` (installed from the repo root), `rviz/`, `display.launch.py` for the model alone, `scripts/import_rev_d_meshes.py` |
 | `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall) |
 | `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `scripts/generate_sim_sdf.py` |
-| `rev_base_tools` | `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`; `config/tof_rows.yaml` |
+| `rev_base_tools` | `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `odom_eval`; `config/tof_rows.yaml` |
 
 ## Runtime data flow
 
@@ -231,6 +231,8 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 - **IMU:** vyaw from `/imu/data`. Orientation is never fused (in sim it is
   Gazebo truth).
 - **Output:** `/odometry/filtered` and `odom -> base_footprint`.
+- **Evaluation:** `odom_eval` scores it against `/ground_truth/odom`; it is
+  the one node allowed to read the truth.
 
 ## Where to start
 

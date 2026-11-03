@@ -96,6 +96,27 @@ released. The robot keeps its last command until the controller's 0.5 s
 `reference_timeout` runs out, which is about 7.5 cm at 0.15 m/s. Press `k` to
 stop on purpose.
 
+## Score the odometry
+
+Drives a 60 s standstill, three laps of a 2 m square (drive, stop, turn on the
+spot) and three laps strafed while rotating, then prints the EKF's and the
+wheels' end errors against Gazebo truth (ADR 0003 thresholds) and exits 0 on
+a pass. Spawn it with room for the square:
+
+```bash
+ros2 launch rev_base_bringup simulation.launch.py x:=-4.0 y:=-3.2
+```
+
+```bash
+ros2 run rev_base_tools odom_eval --ros-args -p use_sim_time:=true -p output_dir:=odom_eval
+```
+
+`output_dir` gets `report.txt` and one TUM file per run and source, for evo:
+
+```bash
+evo_ape tum odom_eval/square_truth.tum odom_eval/square_ekf.tum --align_origin
+```
+
 ## Pan the turret
 
 Angle in radians, positive to the left, limited to ±135° (±2.356 rad):
@@ -155,7 +176,7 @@ colcon test-result --verbose
 | `test_worlds.py` | each world parses, needs no downloads, loads the IMU system and renders with `ogre2` |
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
 | `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint |
-| `rev_base_tools/test/` | ToF grid order, row selection, depth colouring, `stop_simulation` matching |
+| `rev_base_tools/test/` | ToF grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring |
 
 `test_sensor_topics.py` runs on its own `ROS_DOMAIN_ID` and `GZ_PARTITION`, set
 in `rev_base_bringup/CMakeLists.txt`, and needs a GPU for `ogre2`. CI excludes
