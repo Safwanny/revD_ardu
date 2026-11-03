@@ -38,7 +38,8 @@ mobile_base_controller:
 
     base_frame_id: base_footprint
     odom_frame_id: odom
-    enable_odom_tf: true
+    # The EKF owns odom -> base_footprint; ~/odometry is one of its inputs.
+    enable_odom_tf: false
     tf_frame_prefix_enable: false
     tf_frame_prefix: ""
     # Conservative, constant diagnostic covariances. Lateral mecanum velocity

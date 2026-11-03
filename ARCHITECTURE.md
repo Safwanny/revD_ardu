@@ -2,8 +2,8 @@
 
 ROS 2 Jazzy, Gazebo Harmonic, one un-namespaced robot. The URDF robot name is
 `mobile_base`. The scope is the robot model (Rev D v4 with the type_04M_Ardu
-pan turret, CAD `Rev_D_T4M_ardu`), its ToF sensors and IMU, manual driving and
-turret panning; nothing estimates state, maps or plans yet. There is no LiDAR.
+pan turret, CAD `Rev_D_T4M_ardu`), its ToF sensors and IMU, manual driving,
+turret panning and wheel + gyro odometry; nothing maps or plans yet. There is no LiDAR.
 
 ## Package map
 
@@ -24,8 +24,10 @@ teleop_twist_keyboard (stamped)
         |
         v
 mecanum_drive_controller --> four wheel velocities --> gz_ros2_control --> Gazebo
-        +--> /mobile_base_controller/odometry
-        +--> /tf  odom -> base_footprint
+        +--> /mobile_base_controller/odometry (vx, vy) --+
+                                     /imu/data (vyaw) --+--> ekf_filter_node
+                                                              +--> /odometry/filtered
+                                                              +--> /tf  odom -> base_footprint
 
 /turret_controller/commands  (Float64MultiArray, pan rad)
         |
@@ -48,7 +50,7 @@ Gazebo sensors --> ros_gz_bridge
 ## Frames
 
 ```text
-odom --(mecanum_drive_controller)--> base_footprint --> base_link
+odom --(ekf_filter_node)--> base_footprint --> base_link
                                                           +-- tof_front_link, tof_rear_link, tof_left_link, tof_right_link
                                                           +-- imu_link
                                                           +-- four *_wheel_link (from /joint_states)
@@ -56,8 +58,9 @@ odom --(mecanum_drive_controller)--> base_footprint --> base_link
                                                                 +-- tof_camera_link --> tof_camera_lens_link, tof_camera_optical_frame
 ```
 
-- The controller is the only publisher of `odom -> base_footprint`.
-  `robot_state_publisher` publishes everything below `base_footprint`.
+- `ekf_filter_node` is the only publisher of `odom -> base_footprint`; the
+  controller runs with `enable_odom_tf: false`. `robot_state_publisher`
+  publishes everything below `base_footprint`.
 - `base_footprint` is on the ground under the robot centre. `base_link` sits on
   the axle line, `wheel_radius` (29.96 mm) up, so the wheel joints are at z = 0.
 - REP-103 throughout: +X forward, +Y left, +Z up, SI units.
@@ -219,6 +222,16 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 - **Covariances:** odometry covariances are constant, and sideways velocity
   gets less confidence than forward.
 
+## State estimation
+
+`robot_localization`'s `ekf_node` (`config/ekf.yaml`), `two_d_mode`, 50 Hz:
+
+- **Wheels:** vx and vy from `/mobile_base_controller/odometry`. Wheel yaw is
+  not fused: it reads turns about 4.5 % long.
+- **IMU:** vyaw from `/imu/data`. Orientation is never fused (in sim it is
+  Gazebo truth).
+- **Output:** `/odometry/filtered` and `odom -> base_footprint`.
+
 ## Where to start
 
 | Task | Start here |
@@ -230,6 +243,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Move or retune a sensor | `properties.xacro` (pose, range, rate), the sensor's `*.gazebo.xacro`, then `test_sensor_topics.py` |
 | Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |
 | Change which ToF rows are kept | `rev_base_tools/config/tof_rows.yaml` |
+| Change the odometry fusion | `config/ekf.yaml`, then the odometry evaluation |
 | Change the RViz view | `rev_base_description/rviz/mobile_base_sim.rviz` |
 
 ## Known boundaries
