@@ -133,4 +133,21 @@
   <xacro:property name="tof_camera_near" value="0.2"/>
   <xacro:property name="tof_camera_far" value="4.0"/>
 
+  <!-- BNO085 IMU on the electronics deck, axes aligned with base_link. Its
+       mount is not in the CAD yet: base_link origin until it is (calibration
+       knob). 100 Hz is the calibrated-gyro report rate used here.
+       Gyro: 1.7e-3 rad/s white noise is the BNO055's 0.1 deg/s rms (BNO055
+       datasheet rev 1.8, no BNO085 figure exists); 1.5e-4 rad/s static bias
+       is the BNO08x's 0.5 deg/min heading drift spec (datasheet 1000-3927
+       v1.17, sec 6.7), i.e. what its on-chip ZRO calibration leaves.
+       Accel: BNO055 150 ug/sqrt(Hz) over a 50 Hz band, 0.0104 m/s^2.
+       Not fused yet, kept for the record. -->
+  <xacro:property name="imu_x" value="0.0"/>
+  <xacro:property name="imu_y" value="0.0"/>
+  <xacro:property name="imu_z" value="0.0"/>
+  <xacro:property name="imu_update_rate" value="100"/>
+  <xacro:property name="imu_gyro_stddev" value="1.7e-3"/>
+  <xacro:property name="imu_gyro_bias_stddev" value="1.5e-4"/>
+  <xacro:property name="imu_accel_stddev" value="0.0104"/>
+
 </robot>

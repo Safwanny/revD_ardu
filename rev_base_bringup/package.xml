@@ -16,6 +16,7 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>mecanum_drive_controller</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
   <exec_depend>position_controllers</exec_depend>
   <exec_depend>rev_base_description</exec_depend>
   <exec_depend>rev_base_gazebo</exec_depend>
@@ -34,7 +35,6 @@
   <test_depend>ament_lint_common</test_depend>
   <test_depend>launch_testing</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>
-  <test_depend>nav_msgs</test_depend>
   <test_depend>rclpy</test_depend>
   <test_depend>std_msgs</test_depend>
   <test_depend>tf2_msgs</test_depend>

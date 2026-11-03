@@ -26,6 +26,7 @@ REQUIRED_SYSTEMS = {
     'gz-sim-user-commands-system',
     'gz-sim-scene-broadcaster-system',
     'gz-sim-sensors-system',
+    'gz-sim-imu-system',
 }
 EXPECTED_WORLDS = {
     'navigation_basic.sdf',
