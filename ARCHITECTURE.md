@@ -12,7 +12,7 @@ turret panning and wheel + gyro odometry; nothing maps or plans yet. There is no
 | `rev_base_description` | `urdf/` Xacro model, `meshes/rev_d/` (installed from the repo root), `rviz/`, `display.launch.py` for the model alone, `scripts/import_rev_d_meshes.py` |
 | `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall) |
 | `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `scripts/generate_sim_sdf.py` |
-| `rev_base_tools` | `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `odom_eval`; `config/tof_rows.yaml` |
+| `rev_base_tools` | `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml` |
 
 ## Runtime data flow
 
@@ -25,7 +25,7 @@ teleop_twist_keyboard (stamped)
         v
 mecanum_drive_controller --> four wheel velocities --> gz_ros2_control --> Gazebo
         +--> /mobile_base_controller/odometry (vx, vy) --+
-                                     /imu/data (vyaw) --+--> ekf_filter_node
+      /imu/data --> imu_bias --> /imu/data_unbiased (vyaw) --+--> ekf_filter_node
                                                               +--> /odometry/filtered
                                                               +--> /tf  odom -> base_footprint
 
@@ -188,6 +188,8 @@ Arguments:
 | `render_engine` | `ogre2` | `ogre` only for software-rendered checks; its ranges are wrong |
 | `physics_max_step_size` | `0.001` | Gazebo physics step, seconds |
 | `start_controller` | `true` | spawn `mobile_base_controller` (`turret_controller` always starts) |
+| `seed` | `1` | Gazebo RNG seed; sets the IMU bias draw |
+| `imu_bias` | `true` | remove the gyro bias learnt at standstill |
 | `x`, `y`, `z`, `yaw` | `0, 0, 0.10, 0` | spawn pose |
 | `use_sim_time` | `true` | Gazebo clock for every node |
 
@@ -228,8 +230,14 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 
 - **Wheels:** vx and vy from `/mobile_base_controller/odometry`. Wheel yaw is
   not fused: it reads turns about 4.5 % long.
-- **IMU:** vyaw from `/imu/data`. Orientation is never fused (in sim it is
-  Gazebo truth).
+- **IMU:** vyaw from `/imu/data_unbiased`. Orientation is never fused (in
+  sim it is Gazebo truth).
+- **Gyro bias:** `robot_localization` has no bias state, so `imu_bias` learns
+  gyro z bias whenever the wheel odometry says the robot is stopped (after a
+  0.5 s settle, at least 5 s in total, rates above 0.02 rad/s rejected) and
+  subtracts it. The same node runs on the real robot, behind the BNO085's
+  own on-chip calibration. `imu_bias:=false` passes the gyro through, for
+  comparison.
 - **Output:** `/odometry/filtered` and `odom -> base_footprint`.
 - **Evaluation:** `odom_eval` scores it against `/ground_truth/odom`; it is
   the one node allowed to read the truth.
@@ -245,7 +253,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Move or retune a sensor | `properties.xacro` (pose, range, rate), the sensor's `*.gazebo.xacro`, then `test_sensor_topics.py` |
 | Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |
 | Change which ToF rows are kept | `rev_base_tools/config/tof_rows.yaml` |
-| Change the odometry fusion | `config/ekf.yaml`, then the odometry evaluation |
+| Change the odometry fusion | `config/ekf.yaml` or `imu_bias.py`, then `odom_eval` |
 | Change the RViz view | `rev_base_description/rviz/mobile_base_sim.rviz` |
 
 ## Known boundaries

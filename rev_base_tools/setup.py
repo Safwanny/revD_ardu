@@ -31,5 +31,7 @@ setup(
         'tof_depth_colour = rev_base_tools.tof_depth_colour:main',
         'stop_simulation = rev_base_tools.stop_simulation:main',
         'odom_eval = rev_base_tools.odom_eval:main',
+        'odom_eval_plot = rev_base_tools.odom_eval_plot:main',
+        'imu_bias = rev_base_tools.imu_bias:main',
     ]},
 )

@@ -1,5 +1,6 @@
 # robot_localization EKF: the only publisher of odom -> base_footprint
-# (ADR 0003). Wheels give vx, vy; the gyro gives vyaw. Wheel yaw is left out
+# (ADR 0003). Wheels give vx, vy; the gyro gives vyaw, after imu_bias has
+# removed the bias it learns at standstill. Wheel yaw is left out
 # because it reads turns 4.5 % long in sim, and IMU orientation is left out
 # because in sim it is Gazebo truth (ADR 0001).
 ekf_filter_node:
@@ -22,7 +23,7 @@ ekf_filter_node:
                    false, false, false,
                    false, false, false]
 
-    imu0: /imu/data
+    imu0: /imu/data_unbiased
     imu0_config: [false, false, false,
                   false, false, false,
                   false, false, false,

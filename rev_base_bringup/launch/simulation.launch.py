@@ -227,7 +227,7 @@ def generate_launch_description():
     )
     world = LaunchConfiguration('resolved_world')
     # A fixed RNG seed draws the same IMU bias and sensor noise every run.
-    gz_seed = '--seed 1 '
+    gz_seed = ['--seed ', LaunchConfiguration('seed'), ' ']
     simulation_sdf = '/tmp/mobile_base_sim_' + str(os.getpid()) + '.sdf'
     sdf_generator = PathJoinSubstitution(
         [FindPackagePrefix('rev_base_bringup'), 'lib', 'rev_base_bringup',
@@ -349,6 +349,19 @@ def generate_launch_description():
         ],
         output='screen',
     )
+    imu_bias = Node(
+        package='rev_base_tools',
+        executable='imu_bias',
+        name='imu_bias',
+        parameters=[
+            {
+                'enabled': ParameterValue(
+                    LaunchConfiguration('imu_bias'), value_type=bool),
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
+            }
+        ],
+        output='screen',
+    )
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -428,6 +441,18 @@ def generate_launch_description():
                 default_value='true',
                 description='Start the mecanum ros2_control controller.',
             ),
+            DeclareLaunchArgument(
+                'seed',
+                default_value='1',
+                description='Gazebo RNG seed: sets the IMU bias draw.',
+            ),
+            DeclareLaunchArgument(
+                'imu_bias',
+                default_value='true',
+                description=(
+                    'Remove the gyro bias learnt at standstill; false '
+                    'passes /imu/data through unchanged.'),
+            ),
             DeclareLaunchArgument('x', default_value='0.0'),
             DeclareLaunchArgument('y', default_value='0.0'),
             DeclareLaunchArgument('z', default_value='0.10'),
@@ -438,15 +463,16 @@ def generate_launch_description():
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(gz_launch),
-                launch_arguments={'gz_args': ['-r ', gz_seed, world]}.items(),
+                launch_arguments={'gz_args': ['-r ', *gz_seed, world]}.items(),
                 condition=IfCondition(LaunchConfiguration('gui')),
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(gz_launch),
-                launch_arguments={'gz_args': ['-r -s ', gz_seed, world]}.items(),
+                launch_arguments={'gz_args': ['-r -s ', *gz_seed, world]}.items(),
                 condition=UnlessCondition(LaunchConfiguration('gui')),
             ),
             robot_state_publisher,
+            imu_bias,
             ekf,
             RegisterEventHandler(
                 OnProcessExit(
