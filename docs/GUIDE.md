@@ -118,6 +118,8 @@ The camera, its cloud and its depth image turn with it.
 | `/tof_camera/depth_colour` | the same, colour-graded, bgr8 |
 | `/tof_camera/points` | camera cloud in `tof_camera_lens_link` |
 | `/mobile_base_controller/odometry` | wheel odometry |
+| `/imu/data` | IMU, 100 Hz in `imu_link`; rates and accelerations only |
+| `/ground_truth/odom` | Gazebo true pose, for evaluation only |
 | `/joint_states` | four wheels and `turret_pan_joint` |
 
 `<face>` is `front`, `rear`, `left` or `right`.
@@ -150,9 +152,9 @@ colcon test-result --verbose
 | Test | Checks |
 | --- | --- |
 | `test_mecanum_wheels.py` | wheel positions, axes, meshes and hands against Rev D geometry; turret joint and limits |
-| `test_worlds.py` | each world parses, needs no downloads, and renders with `ogre2` |
+| `test_worlds.py` | each world parses, needs no downloads, loads the IMU system and renders with `ogre2` |
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
-| `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic and the odometry TF; a turret command moves the pan joint |
+| `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint |
 | `rev_base_tools/test/` | ToF grid order, row selection, depth colouring, `stop_simulation` matching |
 
 `test_sensor_topics.py` runs on its own `ROS_DOMAIN_ID` and `GZ_PARTITION`, set

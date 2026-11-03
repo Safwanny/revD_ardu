@@ -16,8 +16,9 @@
 """
 Launch Gazebo headlessly and verify the Rev D sensor topic contract.
 
-Runs in my_world. The checks are on frame ids and message shape, not world
-geometry, plus one actuation check: a turret command moves the pan joint.
+Runs in my_world. The checks are on frame ids, message shape and rates, not
+world geometry, plus one actuation check: a turret command moves the pan
+joint, and one isolation check: only evaluation reads the ground truth.
 """
 
 import time
@@ -31,7 +32,8 @@ import launch_testing
 from nav_msgs.msg import Odometry
 import rclpy
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image, JointState, PointCloud2
+from rclpy.time import Time
+from sensor_msgs.msg import Image, Imu, JointState, PointCloud2
 from std_msgs.msg import Float64MultiArray
 from tf2_msgs.msg import TFMessage
 
@@ -80,6 +82,7 @@ class TestSensorTopics(unittest.TestCase):
             '/tof_camera/points': PointCloud2,
             '/tof_camera/depth_image': Image,
             '/mobile_base_controller/odometry': Odometry,
+            '/ground_truth/odom': Odometry,
         }
         for face in FACES:
             topics[f'/tof/{face}/points'] = PointCloud2
@@ -135,8 +138,38 @@ class TestSensorTopics(unittest.TestCase):
         self.assertEqual(odometry.header.frame_id, 'odom')
         self.assertEqual(odometry.child_frame_id, 'base_footprint')
 
+        truth = received['/ground_truth/odom']
+        self.assertEqual(truth.header.frame_id, 'ground_truth')
+        self.assertEqual(truth.child_frame_id, 'base_footprint')
+
         for subscription in subscriptions:
             self.node.destroy_subscription(subscription)
+
+    def test_imu_rate_and_frame(self):
+        stamps = []
+
+        def on_imu(message):
+            self.assertEqual(message.header.frame_id, 'imu_link')
+            stamps.append(Time.from_msg(message.header.stamp).nanoseconds)
+
+        subscription = self.node.create_subscription(
+            Imu, '/imu/data', on_imu, qos_profile_sensor_data)
+        deadline = time.monotonic() + 90.0
+        while time.monotonic() < deadline and len(stamps) < 201:
+            rclpy.spin_once(self.node, timeout_sec=0.2)
+        self.node.destroy_subscription(subscription)
+        self.assertGreater(len(stamps), 200, 'IMU too slow or silent')
+        # Sim-time rate, so a slow real-time factor does not fail it.
+        rate = (len(stamps) - 1) / ((stamps[-1] - stamps[0]) * 1e-9)
+        self.assertAlmostEqual(rate, 100.0, delta=5.0)
+
+    def test_no_robot_node_reads_ground_truth(self):
+        readers = [
+            info.node_name for info in
+            self.node.get_subscriptions_info_by_topic('/ground_truth/odom')
+            if info.node_name != self.node.get_name()
+        ]
+        self.assertEqual(readers, [], 'robot nodes must not see truth')
 
     def test_turret_follows_command(self):
         target = 0.5

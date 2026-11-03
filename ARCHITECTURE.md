@@ -2,7 +2,7 @@
 
 ROS 2 Jazzy, Gazebo Harmonic, one un-namespaced robot. The URDF robot name is
 `mobile_base`. The scope is the robot model (Rev D v4 with the type_04M_Ardu
-pan turret, CAD `Rev_D_T4M_ardu`), its two sensor types, manual driving and
+pan turret, CAD `Rev_D_T4M_ardu`), its ToF sensors and IMU, manual driving and
 turret panning; nothing estimates state, maps or plans yet. There is no LiDAR.
 
 ## Package map
@@ -39,6 +39,8 @@ Gazebo sensors --> ros_gz_bridge
         /tof_camera/points_raw ---> tof_camera_points ---> /tof_camera/points
         /tof_camera/depth_image ---> tof_depth_colour ---> /tof_camera/depth_colour ---> rqt_image_view
         /tof_camera/image, /tof_camera/camera_info, /clock
+        /imu/data  (BNO085 stand-in, 100 Hz, no orientation)
+        /ground_truth/odom  (Gazebo true pose; evaluation only, never /tf)
 ```
 
 `<face>` is `front`, `rear`, `left` or `right`.
@@ -48,6 +50,7 @@ Gazebo sensors --> ros_gz_bridge
 ```text
 odom --(mecanum_drive_controller)--> base_footprint --> base_link
                                                           +-- tof_front_link, tof_rear_link, tof_left_link, tof_right_link
+                                                          +-- imu_link
                                                           +-- four *_wheel_link (from /joint_states)
                                                           +-- turret_link (turret_pan_joint, from /joint_states)
                                                                 +-- tof_camera_link --> tof_camera_lens_link, tof_camera_optical_frame
@@ -105,6 +108,25 @@ gives an 8 × 8 grid over 60 × 60°.
   the bottom of the grid, and `tof_ray_markers` relies on that.
 - **Board.** The carrier is modelled to Pololu's drawing. Which way the header
   side faces is a guess (`tof_board_offset_y`).
+
+### IMU
+
+A BNO085 stand-in on `imu_link`, axes as `base_link`, at the `base_link`
+origin until its mount is in the CAD. Gazebo's `imu` sensor publishes
+`/imu/data` at 100 Hz.
+
+- **Noise.** Gyro white noise 1.7e-3 rad/s (BNO055 rms) and a static bias of
+  1.5e-4 rad/s, the BNO08x's 0.5°/min heading drift spec. Sources in
+  `properties.xacro`. `gz sim --seed 1` draws the same bias every run.
+- **No orientation.** gz-sensors fills orientation from the true pose with no
+  noise, so `enable_orientation` is off: nothing downstream can fuse truth.
+
+### Ground truth
+
+Gazebo's `OdometryPublisher` publishes the model's true pose on
+`/ground_truth/odom` (`ground_truth -> base_footprint`, 50 Hz). Only tests and
+evaluation scripts read it; `test_sensor_topics.py` fails if a robot node
+subscribes. Its own TF topic is never bridged.
 
 ### Turret
 
@@ -206,7 +228,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Change the turret | `properties.xacro` (`turret_*`), `turret.xacro`, `turret_controller` in `controllers.yaml` |
 | Change wheel contact | `generate_sim_sdf.py`, then `test_mecanum_wheel_contact.py` |
 | Move or retune a sensor | `properties.xacro` (pose, range, rate), the sensor's `*.gazebo.xacro`, then `test_sensor_topics.py` |
-| Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py` |
+| Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |
 | Change which ToF rows are kept | `rev_base_tools/config/tof_rows.yaml` |
 | Change the RViz view | `rev_base_description/rviz/mobile_base_sim.rviz` |
 

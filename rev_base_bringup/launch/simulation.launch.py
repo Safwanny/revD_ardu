@@ -225,6 +225,8 @@ def generate_launch_description():
         get_package_share_directory('rev_base_gazebo'), 'worlds'
     )
     world = LaunchConfiguration('resolved_world')
+    # A fixed RNG seed draws the same IMU bias and sensor noise every run.
+    gz_seed = '--seed 1 '
     simulation_sdf = '/tmp/mobile_base_sim_' + str(os.getpid()) + '.sdf'
     sdf_generator = PathJoinSubstitution(
         [FindPackagePrefix('rev_base_bringup'), 'lib', 'rev_base_bringup',
@@ -427,12 +429,12 @@ def generate_launch_description():
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(gz_launch),
-                launch_arguments={'gz_args': ['-r ', world]}.items(),
+                launch_arguments={'gz_args': ['-r ', gz_seed, world]}.items(),
                 condition=IfCondition(LaunchConfiguration('gui')),
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(gz_launch),
-                launch_arguments={'gz_args': ['-r -s ', world]}.items(),
+                launch_arguments={'gz_args': ['-r -s ', gz_seed, world]}.items(),
                 condition=UnlessCondition(LaunchConfiguration('gui')),
             ),
             robot_state_publisher,
@@ -460,6 +462,10 @@ def generate_launch_description():
                 executable='parameter_bridge',
                 arguments=[
                     '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+                    '/imu/data@sensor_msgs/msg/Imu[gz.msgs.IMU',
+                    # Evaluation only: no robot node may subscribe.
+                    '/ground_truth/odom@nav_msgs/msg/Odometry'
+                    '[gz.msgs.Odometry',
                     # ToF camera: IR amplitude stand-in, depth, cloud, intrinsics.
                     '/tof_camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
                     '/tof_camera/depth_image@sensor_msgs/msg/Image'
