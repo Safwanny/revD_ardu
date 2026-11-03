@@ -111,11 +111,19 @@ ros2 launch rev_base_bringup simulation.launch.py x:=-4.0 y:=-3.2
 ros2 run rev_base_tools odom_eval --ros-args -p use_sim_time:=true -p output_dir:=odom_eval
 ```
 
-`output_dir` gets `report.txt` and one TUM file per run and source, for evo:
+`output_dir` gets `report.txt` and one 10 Hz TUM file per run and source.
+Plot them, or score them with evo:
+
+```bash
+ros2 run rev_base_tools odom_eval_plot odom_eval
+```
 
 ```bash
 evo_ape tum odom_eval/square_truth.tum odom_eval/square_ekf.tum --align_origin
 ```
+
+Launch with `seed:=<n>` for another IMU bias draw, and `imu_bias:=false` to
+score the EKF on the raw gyro.
 
 ## Pan the turret
 
@@ -140,6 +148,8 @@ The camera, its cloud and its depth image turn with it.
 | `/tof_camera/points` | camera cloud in `tof_camera_lens_link` |
 | `/mobile_base_controller/odometry` | wheel odometry |
 | `/imu/data` | IMU, 100 Hz in `imu_link`; rates and accelerations only |
+| `/imu/data_unbiased` | the same with the standstill gyro z bias removed; the EKF's input |
+| `/odometry/filtered` | EKF odometry |
 | `/ground_truth/odom` | Gazebo true pose, for evaluation only |
 | `/joint_states` | four wheels and `turret_pan_joint` |
 
@@ -176,7 +186,7 @@ colcon test-result --verbose
 | `test_worlds.py` | each world parses, needs no downloads, loads the IMU system and renders with `ogre2` |
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
 | `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint |
-| `rev_base_tools/test/` | ToF grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring |
+| `rev_base_tools/test/` | ToF grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
 
 `test_sensor_topics.py` runs on its own `ROS_DOMAIN_ID` and `GZ_PARTITION`, set
 in `rev_base_bringup/CMakeLists.txt`, and needs a GPU for `ogre2`. CI excludes

@@ -84,6 +84,7 @@ class TestSensorTopics(unittest.TestCase):
             '/mobile_base_controller/odometry': Odometry,
             '/ground_truth/odom': Odometry,
             '/odometry/filtered': Odometry,
+            '/imu/data_unbiased': Imu,
         }
         for face in FACES:
             topics[f'/tof/{face}/points'] = PointCloud2

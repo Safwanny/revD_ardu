@@ -6,8 +6,12 @@ spot) and three laps of the same square strafed while rotating, then prints
 end position and heading errors for the EKF (/odometry/filtered) and the
 wheels alone (/mobile_base_controller/odometry) against the ADR 0003
 thresholds. Each run is aligned by its starting pose only, so heading drift
-is not fitted away. Every pose is also written as TUM files under
-output_dir, for evo_ape / evo_traj.
+is not fitted away. Poses are also written at 10 Hz as TUM files under
+output_dir, for evo_ape / evo_traj and odom_eval_plot.
+
+"EKF beats wheel-only" is judged on strafe_rotate only. The square is made of
+on-the-spot turns, the very motion the wheel constant was calibrated on in
+this sim, so there it only checks the calibration against itself.
 
 Evaluation only: this is the one node allowed to read /ground_truth/odom.
 Spawn the robot with room for the square, e.g. x:=-4.0 y:=-3.2 in
@@ -36,6 +40,9 @@ HEADING_LIMIT = math.radians(3.0)
 STANDSTILL_LIMIT = math.radians(1.0)
 STANDSTILL_TIME = 60.0
 SETTLE = 1.0
+TUM_PERIOD = 0.1
+# Runs off the wheel calibration path, where wheel-only is a fair reference.
+BEATS_RUNS = ('strafe_rotate',)
 
 
 def wrap(angle):
@@ -122,6 +129,9 @@ class OdomEval(Node):
                                         pose[1] - self.last_truth[1])
                 self.last_truth = pose
             stamp = message.header.stamp.sec + message.header.stamp.nanosec * 1e-9
+            if stamp - self.last_written.get(name, -1.0) < TUM_PERIOD:
+                return
+            self.last_written[name] = stamp
             p, q = message.pose.pose.position, message.pose.pose.orientation
             self.files[name].write(
                 f'{stamp:.6f} {p.x} {p.y} {p.z} {q.x} {q.y} {q.z} {q.w}\n')
@@ -171,6 +181,7 @@ class OdomEval(Node):
         self.last_truth = self.origins['truth']
         self.files = {k: open(self.output / f'{name}_{k}.tum', 'w')
                       for k in SOURCES}
+        self.last_written = {}
 
     def finish_run(self):
         for handle in self.files.values():
@@ -209,7 +220,7 @@ class OdomEval(Node):
                 f'{100 * position / max(path, 1e-9):7.2f} '
                 f'{math.degrees(heading):9.2f}  {verdict}')
         for run, scores in by_run.items():
-            if run == 'standstill':
+            if run not in BEATS_RUNS:
                 continue
             beats = (scores['ekf'][0] < scores['wheel'][0]
                      and abs(scores['ekf'][1]) < abs(scores['wheel'][1]))
