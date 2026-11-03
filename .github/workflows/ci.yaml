@@ -54,4 +54,5 @@ jobs:
           xacro rev_base_description/urdf/mobile_base.urdf.xacro \
             > /tmp/mobile_base.urdf
           check_urdf /tmp/mobile_base.urdf
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git diff --check
