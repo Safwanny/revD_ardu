@@ -20,6 +20,7 @@ from rev_base_tools.stop_simulation import (
     PARENT_MARKERS,
     PATTERNS,
     PROTECTED,
+    ancestors,
     command_line,
 )
 import os
@@ -99,3 +100,9 @@ def test_command_line_reads_this_process_and_tolerates_a_dead_one():
     assert command_line(os.getpid()) is not None
     # A pid that cannot exist on Linux.
     assert command_line(2 ** 31 - 1) is None
+
+
+def test_the_whole_calling_chain_is_spared():
+    chain = ancestors(os.getpid())
+    assert {os.getpid(), os.getppid()} <= chain
+    assert 1 not in chain

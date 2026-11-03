@@ -79,10 +79,24 @@ def command_line(pid):
     return text or None
 
 
+def ancestors(pid):
+    """Return pid and every process above it: whatever ran this script."""
+    chain = set()
+    while pid > 1 and pid not in chain:
+        chain.add(pid)
+        try:
+            with open(f'/proc/{pid}/stat') as handle:
+                # The name field can hold spaces; ppid is 2nd after its ')'.
+                pid = int(handle.read().rsplit(')', 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    return chain
+
+
 def targets():
     """Return [(pid, command line)] for every process worth stopping."""
     found = []
-    mine = {os.getpid(), os.getppid()}
+    mine = ancestors(os.getpid())
     for entry in os.listdir('/proc'):
         if not entry.isdigit():
             continue
