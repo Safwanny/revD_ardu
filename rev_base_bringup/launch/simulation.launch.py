@@ -215,6 +215,7 @@ def generate_launch_description():
     controllers = PathJoinSubstitution(
         [bringup_share, 'config', 'controllers.yaml']
     )
+    ekf_config = PathJoinSubstitution([bringup_share, 'config', 'ekf.yaml'])
     tof_rows_config = PathJoinSubstitution(
         [FindPackageShare('rev_base_tools'), 'config', 'tof_rows.yaml']
     )
@@ -320,8 +321,6 @@ def generate_launch_description():
             '20.0',
             '--service-call-timeout',
             '20.0',
-            '--controller-ros-args=-r',
-            '--controller-ros-args=mobile_base_controller/tf_odometry:=/tf',
         ],
         condition=IfCondition(LaunchConfiguration('start_controller')),
         output='screen',
@@ -337,6 +336,16 @@ def generate_launch_description():
             '20.0',
             '--service-call-timeout',
             '20.0',
+        ],
+        output='screen',
+    )
+    ekf = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        parameters=[
+            ekf_config,
+            {'use_sim_time': LaunchConfiguration('use_sim_time')},
         ],
         output='screen',
     )
@@ -438,6 +447,7 @@ def generate_launch_description():
                 condition=UnlessCondition(LaunchConfiguration('gui')),
             ),
             robot_state_publisher,
+            ekf,
             RegisterEventHandler(
                 OnProcessExit(
                     target_action=generate_sdf,

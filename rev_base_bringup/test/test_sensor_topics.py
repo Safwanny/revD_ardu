@@ -83,6 +83,7 @@ class TestSensorTopics(unittest.TestCase):
             '/tof_camera/depth_image': Image,
             '/mobile_base_controller/odometry': Odometry,
             '/ground_truth/odom': Odometry,
+            '/odometry/filtered': Odometry,
         }
         for face in FACES:
             topics[f'/tof/{face}/points'] = PointCloud2
@@ -137,6 +138,17 @@ class TestSensorTopics(unittest.TestCase):
         odometry = received['/mobile_base_controller/odometry']
         self.assertEqual(odometry.header.frame_id, 'odom')
         self.assertEqual(odometry.child_frame_id, 'base_footprint')
+
+        filtered = received['/odometry/filtered']
+        self.assertEqual(filtered.header.frame_id, 'odom')
+        self.assertEqual(filtered.child_frame_id, 'base_footprint')
+
+        # The EKF owns odom -> base_footprint; the controller sends none.
+        tf_writers = {
+            info.node_name for info in
+            self.node.get_publishers_info_by_topic('/tf')}
+        self.assertIn('ekf_filter_node', tf_writers)
+        self.assertNotIn('mobile_base_controller', tf_writers)
 
         truth = received['/ground_truth/odom']
         self.assertEqual(truth.header.frame_id, 'ground_truth')
