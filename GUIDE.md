@@ -111,6 +111,26 @@ ros2 topic pub --once /e_stop std_msgs/msg/Bool "{data: false}"
 Compare `/cmd_vel_mux` with `/mobile_base_controller/reference` to see what
 the governor changed.
 
+## ToF-only failsafe: drive to a goal
+
+The robot reaches a goal using the four ToF sensors alone, with a bug
+algorithm and no map. The course has a long wall, a U-trap and a closed box:
+
+```bash
+ros2 launch rev_base_bringup simulation.launch.py world:=failsafe_course mode:=tof_only x:=-3.5 y:=-2.0
+```
+
+In RViz pick **2D Goal Pose** in the toolbar and click a goal; the arrow's
+direction is ignored. Follow what it is doing:
+
+```bash
+ros2 topic echo /bug_nav/state
+```
+
+`reached` within 0.1 m, or `unreachable` (a goal inside the box). Teleop
+still overrides it, and the e-stop stops it. In this mode teleop too moves
+only along one axis at a time and spins only when nothing is near a corner.
+
 ## Score the odometry
 
 Drives a 60 s standstill, three laps of a 2 m square (drive, stop, turn on the
@@ -201,9 +221,10 @@ colcon test-result --verbose
 | `test_worlds.py` | each world parses, needs no downloads, loads the IMU system and renders with `ogre2` |
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
 | `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint |
+| `test_bug_nav.py` | launches Gazebo headless in `failsafe_course` with `mode:=tof_only` and sends four goals: behind the long wall, a staging point, out of the U-trap, inside the closed box; each must be reached within 0.2 m (or come back unreachable) without touching anything |
 | `test_safety_chain.py` | launches Gazebo headless and drives through the safety chain: forward to a wall at the speed cap and stops short, slides along it at the side cap into a corner, gets out both ways, diagonal in and out, spins in the open; the e-stop holds |
-| `rev_base_tools/test/` | safety governor (braking speed, swept path, clearance at an angle, turning, silent faces), ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
+| `rev_base_tools/test/` | bug navigator (leave rule, hand-rule axis choice), safety governor (ToF-only snapping, point memory frame, braking speed, swept path, clearance at an angle, turning, silent faces), ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
 
-`test_sensor_topics.py` and `test_safety_chain.py` each run on their own
+`test_sensor_topics.py`, `test_safety_chain.py` and `test_bug_nav.py` each run on their own
 `ROS_DOMAIN_ID` and `GZ_PARTITION`, set in `rev_base_bringup/CMakeLists.txt`,
 and need a GPU for `ogre2`. CI excludes them.

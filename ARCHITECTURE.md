@@ -3,16 +3,16 @@
 ROS 2 Jazzy, Gazebo Harmonic, one un-namespaced robot. The URDF robot name is
 `mobile_base`. The scope is the robot model (Rev D v4 with the type_04M_Ardu
 pan turret, CAD `Rev_D_T4M_ardu`), its ToF sensors and IMU, manual driving,
-turret panning, wheel + gyro odometry and the ToF safety chain; nothing maps or plans yet. There is no LiDAR.
+turret panning, wheel + gyro odometry, the ToF safety chain and a ToF-only bug navigator for failsafe goals; nothing maps yet. There is no LiDAR.
 
 ## Package map
 
 | Package | Responsibility |
 | --- | --- |
 | `rev_base_description` | `urdf/` Xacro model, `meshes/rev_d/` (installed from the repo root), `rviz/`, `display.launch.py` for the model alone, `scripts/import_rev_d_meshes.py` |
-| `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall) |
-| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `scripts/generate_sim_sdf.py` |
-| `rev_base_tools` | `safety_governor`, `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
+| `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall), `worlds/failsafe_course.sdf` (long wall, U-trap, closed box) |
+| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `config/safety.yaml`, `config/bug_nav.yaml`, `scripts/generate_sim_sdf.py` |
+| `rev_base_tools` | `safety_governor`, `bug_nav`, `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
 
 ## Runtime data flow
 
@@ -204,6 +204,7 @@ Arguments:
 | `start_controller` | `true` | spawn `mobile_base_controller` (`turret_controller` always starts) |
 | `seed` | `1` | Gazebo RNG seed; sets the IMU bias draw |
 | `imu_bias` | `true` | remove the gyro bias learnt at standstill |
+| `mode` | `normal` | `tof_only`: the failsafe (below) and `bug_nav` |
 | `x`, `y`, `z`, `yaw` | `0, 0, 0.10, 0` | spawn pose |
 | `use_sim_time` | `true` | Gazebo clock for every node |
 
@@ -268,6 +269,36 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
   - A mixed command is scaled as a whole, so its direction is kept.
 - `odom_eval` publishes straight to the controller, bypassing the chain: it
   is an evaluation tool for open floor.
+
+## ToF-only failsafe
+
+`mode:=tof_only`, for when only the ToF ring can be trusted.
+
+- **Governor rules**, this mode only:
+  - Translation is snapped to the larger of vx and vy: motion only along a
+    sensing axis, never into the corner gaps.
+  - At most 0.2 rad/s of heading trim while translating.
+  - A standing spin only when no point is within the corner circle
+    (0.186 m) plus 2 cm.
+- **`bug_nav`** (`config/bug_nav.yaml`) drives to a goal clicked with RViz's
+  2D Goal Pose (`/goal_pose`, `odom` frame) and publishes on `/cmd_vel_nav`,
+  so teleop overrides it and the governor still limits it. It runs DistBug
+  (Kamon and Rivlin) on the governor's point memory:
+  - **to_goal:** spin to face the goal, drive at it. Something within
+    0.25 m ahead, or no progress for 3 s, makes a hit point.
+  - **follow:** turn square to the obstacle (a line fitted to the points
+    straight ahead), keep that heading and slide along it on the side toward
+    the goal, one axis at a time, by the hand rule: round a corner once the
+    side toward it is 0.5 m clear (then one hull length before rounding
+    again), else straight on, else away.
+  - **leave:** when the goal is in the clear, or the free range F toward it
+    (less the 0.25 m it stops short) gives d(x, T) - F <= d_min - 0.1 m.
+    F counts only when the goal bearing is in a face's view.
+  - **unreachable:** back within 0.4 m of the hit point after a full turn
+    round the obstacle (net hand-rule turns ±4), or a hit within 0.1 m of an
+    earlier one.
+  - State on `/bug_nav/state` (latched): `idle`, `to_goal`, `follow`,
+    `reached`, `unreachable`.
 - The ToF driver's "trust a new close return after two frames" rule is not
   modelled; `tof_sim` makes no false returns.
 
@@ -301,6 +332,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |
 | Change which ToF rows are kept | `rev_base_tools/config/tof_rows.yaml` |
 | Change the safety chain | `config/safety.yaml`, `safety_governor.py`, then `test_safety_governor.py` and `test_safety_chain.py` |
+| Change the ToF-only failsafe | `config/bug_nav.yaml`, `bug_nav.py`, `axis_only` in `safety_governor.py`, then `test_bug_nav.py` (both) |
 | Change the odometry fusion | `config/ekf.yaml` or `imu_bias.py`, then `odom_eval` |
 | Change the RViz view | `rev_base_description/rviz/mobile_base_sim.rviz` |
 

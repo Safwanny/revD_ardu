@@ -1,0 +1,38 @@
+# rev_base_tools bug_nav: DistBug on the ToF ring, launched with
+# mode:=tof_only. Goal from RViz 2D Goal Pose (odom); /cmd_vel_nav out.
+bug_nav:
+  ros__parameters:
+    # Hull with wheels, as in safety.yaml.
+    half_length: 0.15
+    half_width: 0.11
+    speed: 0.3
+    spin_speed: 1.0
+    # Heading trim while driving at the goal; the governor allows the same.
+    trim_angular: 0.2
+    heading_tolerance: 0.15
+    # Something closer ahead than this is a hit: the 0.15 m stop from
+    # 0.45 m/s plus margin, and it leaves room for a spin.
+    hit_distance: 0.25
+    # Round a corner only once the side toward the obstacle is this clear.
+    wall_lost: 0.5
+    # Hull grown by this when measuring free ranges.
+    margin: 0.03
+    spin_margin: 0.02
+    # DistBug step: each leave must promise this much closer to the goal.
+    step: 0.1
+    goal_tolerance: 0.1
+    # Free range is trusted to here (2 m sensor range less noise).
+    sensor_range: 1.8
+    # The free range toward the goal counts only within this of a face's
+    # axis: further off, the hull's swept path leaves the face's 60 deg view.
+    view: 0.2
+    # Back within this of the hit point after going round: unreachable. It
+    # comes back at a different gap (rounding a corner leaves ~5 cm, a hit
+    # ~0.28 m); robot centres either side of a thin wall are >= ~0.67 m
+    # apart.
+    loop_radius: 0.4
+    # No 3 cm of progress in this long: the way is blocked.
+    stall_time: 3.0
+    min_height: 0.02
+    max_height: 0.20
+    memory: 3.0
