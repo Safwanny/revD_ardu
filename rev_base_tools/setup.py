@@ -27,6 +27,7 @@ setup(
     entry_points={'console_scripts': [
         'tof_ray_markers = rev_base_tools.tof_ray_markers:main',
         'tof_rows = rev_base_tools.tof_rows:main',
+        'tof_sim = rev_base_tools.tof_sim:main',
         'tof_camera_points = rev_base_tools.tof_camera_points:main',
         'tof_depth_colour = rev_base_tools.tof_depth_colour:main',
         'stop_simulation = rev_base_tools.stop_simulation:main',

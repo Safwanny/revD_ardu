@@ -24,7 +24,7 @@ navigation, perception) gets rebuilt for Rev D from here.
 
 | Sensor | Part | Simulated as | Topic |
 | --- | --- | --- | --- |
-| ToF ring | 4 × VL53L7CX on Pololu #3418 carriers, flush on each 11.25° hull wall | 8 × 8 zones over 60°, 15 Hz, 0.02–3.5 m, pitched 11.25° down | `/tof/<face>/points`, `/tof/<face>/rows` |
+| ToF ring | 4 × VL53L7CX on Pololu #3418 carriers, flush on each 11.25° hull wall | 8 × 8 zones over 60°, 15 Hz, 0.02–2 m with datasheet noise and dropout, pitched 11.25° down | `/tof/<face>/points`, `/tof/<face>/rows` |
 | ToF camera | Arducam ToF (B0410) on the pan turret | 240 × 136 depth, 62.8 × 37.9°, 0.2–4 m, 30 Hz | `/tof_camera/depth_image`, `/tof_camera/points` |
 
 Rev D has no LiDAR any more.
@@ -42,7 +42,7 @@ Everything is simulation only. No hardware driver exists yet.
 | `rev_base_description` | Xacro model, Rev D meshes, turret, sensors, ros2_control declaration, RViz configs |
 | `rev_base_gazebo` | Gazebo worlds (`my_world`, `navigation_basic`) |
 | `rev_base_bringup` | Simulation launch, controller config, generated SDF with wheel contact |
-| `rev_base_tools` | ToF row selection, ray markers, camera cloud restamp, depth colouring, `stop_simulation` |
+| `rev_base_tools` | ToF sensor model, row selection, ray markers, camera cloud restamp, depth colouring, `stop_simulation` |
 
 ## Documentation
 

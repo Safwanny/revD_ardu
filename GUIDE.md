@@ -140,7 +140,7 @@ The camera, its cloud and its depth image turn with it.
 
 | Topic | What it is |
 | --- | --- |
-| `/tof/<face>/points` | full 8 × 8 grid per ToF sensor, organised, misses non-finite |
+| `/tof/<face>/points` | full 8 × 8 grid per ToF sensor, organised, misses and dropped zones NaN |
 | `/tof/<face>/rows` | the kept rows only (4, 5, 6), 3 × 8 |
 | `/tof/rays` | RViz markers: one faint ray per kept zone, hits brighter than misses |
 | `/tof_camera/depth_image` | camera depth, 32FC1 metres |
@@ -186,7 +186,7 @@ colcon test-result --verbose
 | `test_worlds.py` | each world parses, needs no downloads, loads the IMU system and renders with `ogre2` |
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
 | `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint |
-| `rev_base_tools/test/` | ToF grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
+| `rev_base_tools/test/` | ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
 
 `test_sensor_topics.py` runs on its own `ROS_DOMAIN_ID` and `GZ_PARTITION`, set
 in `rev_base_bringup/CMakeLists.txt`, and needs a GPU for `ogre2`. CI excludes

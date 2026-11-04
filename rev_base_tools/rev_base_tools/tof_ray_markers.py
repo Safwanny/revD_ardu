@@ -101,10 +101,10 @@ class ToFRayMarkers(Node):
         self.declare_parameter('zones', 8)
         self.declare_parameter('field_of_view', math.radians(60.0))
         self.declare_parameter('min_range', 0.02)
-        self.declare_parameter('max_range', 3.5)
+        self.declare_parameter('max_range', 2.0)
         self.declare_parameter('line_width', 0.001)
         # How far a ray that saw nothing is drawn. The sensor reaches further,
-        # but nothing past the marking range is acted on, and 3.5 m spokes on
+        # but nothing past the marking range is acted on, and 2 m spokes on
         # every miss bury the returns that matter.
         self.declare_parameter('miss_length', 1.0)
         self.declare_parameter('publish_rate', 15.0)

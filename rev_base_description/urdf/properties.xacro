@@ -76,12 +76,14 @@
   <xacro:property name="tof_zone_angle" value="${tof_fov / tof_zones}"/>
   <xacro:property name="tof_half_span"
                   value="${tof_fov / 2.0 - tof_zone_angle / 2.0}"/>
+  <!-- 2 m, not the 3.5 m headline: that is 4 x 4 only. At 8 x 8 / 15 Hz a
+       white target in the dark reaches 2.0 m typical (DS13865 Table 18).
+       Range noise and zone dropout are added by rev_base_tools tof_sim
+       (config/tof_sim.yaml, which repeats this range), not by Gazebo. -->
   <xacro:property name="tof_min_range" value="0.02"/>
-  <xacro:property name="tof_max_range" value="3.5"/>
+  <xacro:property name="tof_max_range" value="2.0"/>
   <xacro:property name="tof_range_resolution" value="0.001"/>
   <xacro:property name="tof_update_rate" value="15.0"/>
-  <xacro:property name="tof_noise_mean" value="0.0"/>
-  <xacro:property name="tof_noise_stddev" value="0.01"/>
   <!-- Zone rows sit at -26.25 + 7.5 * row deg off the axis, so pitching
        down 1.5 zones (11.25 deg) puts row 5 exactly level. Calibration knob:
        measure the printed mount and put the angle here. -->
