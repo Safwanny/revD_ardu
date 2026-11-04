@@ -23,9 +23,10 @@
   <!-- base_link sits on the axle line, so the wheel joints are at z = 0. -->
   <xacro:property name="base_link_height" value="${wheel_radius}"/>
 
-  <!-- JGY370 worm motor, direct drive. 100 rpm assumed until the real
-       gearing is known: 10.47 rad/s, 0.31 m/s at the wheel. -->
-  <xacro:property name="wheel_max_velocity" value="10.47"/>
+  <!-- JGY370 12 V 150 rpm worm motor, direct drive: 15.7 rad/s no-load,
+       0.47 m/s at the wheel (Seeed 108990007 datasheet, 160 rpm variant:
+       load speed 128 rpm, so expect ~0.40 m/s loaded). -->
+  <xacro:property name="wheel_max_velocity" value="15.7"/>
   <xacro:property name="wheel_joint_damping" value="0.001"/>
   <xacro:property name="wheel_joint_friction" value="0.001"/>
 

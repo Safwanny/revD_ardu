@@ -29,6 +29,10 @@ navigation, perception) gets rebuilt for Rev D from here.
 
 Rev D has no LiDAR any more.
 
+- **Safety chain.** Teleop and navigation commands go through `twist_mux`
+  (with an e-stop lock) and a speed governor on the ToF ring: 0.45 m/s cap,
+  slows only motion that closes on an obstacle so it can stop 3 cm short,
+  slows beside walls without stopping, and never blocks driving away.
 - **Visualisation.** RViz shows the ToF rows that are kept,
   faint ToF rays, and the camera's 3D depth cloud. A separate window shows the
   camera depth colour-graded: near is red, far is blue, no return is black.
@@ -41,7 +45,7 @@ Everything is simulation only. No hardware driver exists yet.
 | --- | --- |
 | `rev_base_description` | Xacro model, Rev D meshes, turret, sensors, ros2_control declaration, RViz configs |
 | `rev_base_gazebo` | Gazebo worlds (`my_world`, `navigation_basic`) |
-| `rev_base_bringup` | Simulation launch, controller config, generated SDF with wheel contact |
+| `rev_base_bringup` | Simulation launch, controller and safety-chain config, generated SDF with wheel contact |
 | `rev_base_tools` | ToF sensor model, row selection, ray markers, camera cloud restamp, depth colouring, `stop_simulation` |
 
 ## Documentation
