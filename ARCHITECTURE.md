@@ -12,7 +12,7 @@ turret panning and wheel + gyro odometry; nothing maps or plans yet. There is no
 | `rev_base_description` | `urdf/` Xacro model, `meshes/rev_d/` (installed from the repo root), `rviz/`, `display.launch.py` for the model alone, `scripts/import_rev_d_meshes.py` |
 | `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall) |
 | `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `scripts/generate_sim_sdf.py` |
-| `rev_base_tools` | `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml` |
+| `rev_base_tools` | `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
 
 ## Runtime data flow
 
@@ -37,6 +37,7 @@ JointGroupPositionController --> turret_pan_joint --> gz_ros2_control --> Gazebo
 joint_state_broadcaster --> /joint_states (4 wheels + turret_pan_joint) --> robot_state_publisher
 
 Gazebo sensors --> ros_gz_bridge
+        /tof/<face>/points_raw ---> tof_sim ---> /tof/<face>/points  (noise, dropout)
         /tof/<face>/points ---> tof_rows ---> /tof/<face>/rows ---> tof_ray_markers ---> /tof/rays
         /tof_camera/points_raw ---> tof_camera_points ---> /tof_camera/points
         /tof_camera/depth_image ---> tof_depth_colour ---> /tof_camera/depth_colour ---> rqt_image_view
@@ -109,6 +110,15 @@ gives an 8 × 8 grid over 60 × 60°.
   `tof_ray_markers` reads the same file.
 - **Grid order.** Gazebo fills the organised cloud bottom row first. Row 0 is
   the bottom of the grid, and `tof_ray_markers` relies on that.
+- **Range and noise.** `tof_max_range` is 2 m, the 8 × 8 / 15 Hz figure for
+  a white target in the dark, not the 3.5 m that holds for 4 × 4 only.
+  Gazebo adds no noise. `tof_sim` stands where the real driver will and makes
+  the cloud read like it (`config/tof_sim.yaml`, datasheet sources there):
+  - noise along each ray, σ = max(4.5 mm, 2.1 % of range)
+  - each zone drops with a probability rising from 1 % near to 10 % at 2 m
+  - misses and dropped zones are NaN, as the real driver publishes zones
+    with an invalid target status
+  The `seed` launch argument seeds it.
 - **Board.** The carrier is modelled to Pololu's drawing. Which way the header
   side faces is a guess (`tof_board_offset_y`).
 
@@ -250,7 +260,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | New CAD export | `import_rev_d_meshes.py <Rev_D_T4M_ardu> meshes/rev_d`, then check `properties.xacro` against the READMEs |
 | Change the turret | `properties.xacro` (`turret_*`), `turret.xacro`, `turret_controller` in `controllers.yaml` |
 | Change wheel contact | `generate_sim_sdf.py`, then `test_mecanum_wheel_contact.py` |
-| Move or retune a sensor | `properties.xacro` (pose, range, rate), the sensor's `*.gazebo.xacro`, then `test_sensor_topics.py` |
+| Move or retune a sensor | `properties.xacro` (pose, range, rate), `tof_sim.yaml` (ToF noise, dropout), the sensor's `*.gazebo.xacro`, then `test_sensor_topics.py` |
 | Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |
 | Change which ToF rows are kept | `rev_base_tools/config/tof_rows.yaml` |
 | Change the odometry fusion | `config/ekf.yaml` or `imu_bias.py`, then `odom_eval` |

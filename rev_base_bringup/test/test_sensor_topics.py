@@ -21,6 +21,7 @@ world geometry, plus one actuation check: a turret command moves the pan
 joint, and one isolation check: only evaluation reads the ground truth.
 """
 
+import math
 import time
 import unittest
 
@@ -34,10 +35,13 @@ import rclpy
 from rclpy.qos import qos_profile_sensor_data
 from rclpy.time import Time
 from sensor_msgs.msg import Image, Imu, JointState, PointCloud2
+from sensor_msgs_py import point_cloud2
 from std_msgs.msg import Float64MultiArray
 from tf2_msgs.msg import TFMessage
 
 FACES = ('front', 'rear', 'left', 'right')
+# tof_max_range (properties.xacro) plus 4 sigma of tof_sim's 2.1 % noise.
+TOF_MAX_RANGE = 2.0 * (1 + 4 * 0.021)
 
 
 def generate_test_description():
@@ -157,6 +161,31 @@ class TestSensorTopics(unittest.TestCase):
 
         for subscription in subscriptions:
             self.node.destroy_subscription(subscription)
+
+    def test_tof_range_and_dropout(self):
+        # At standstill a zone that is NaN in some frames and a return in
+        # others is dropout; a miss beyond range is NaN in every frame.
+        frames = []
+        subscription = self.node.create_subscription(
+            PointCloud2, '/tof/front/points', frames.append,
+            qos_profile_sensor_data)
+        deadline = time.monotonic() + 90.0
+        while time.monotonic() < deadline and len(frames) < 60:
+            rclpy.spin_once(self.node, timeout_sec=0.2)
+        self.node.destroy_subscription(subscription)
+        self.assertGreaterEqual(len(frames), 60, 'front ToF too slow')
+        ranges = [
+            [math.dist((0.0, 0.0, 0.0), point) for point in
+             point_cloud2.read_points(frame, ('x', 'y', 'z'),
+                                      skip_nans=False)]
+            for frame in frames]
+        returns = [r for frame in ranges for r in frame if math.isfinite(r)]
+        self.assertTrue(returns, 'front ToF sees nothing')
+        self.assertLess(max(returns), TOF_MAX_RANGE)
+        flickering = [
+            zone for zone in range(64)
+            if len({math.isfinite(frame[zone]) for frame in ranges}) == 2]
+        self.assertTrue(flickering, 'no zone dropout')
 
     def test_imu_rate_and_frame(self):
         stamps = []

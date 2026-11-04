@@ -40,11 +40,6 @@
             <max>${tof_max_range}</max>
             <resolution>${tof_range_resolution}</resolution>
           </range>
-          <noise>
-            <type>gaussian</type>
-            <mean>${tof_noise_mean}</mean>
-            <stddev>${tof_noise_stddev}</stddev>
-          </noise>
         </lidar>
       </sensor>
     </gazebo>

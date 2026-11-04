@@ -219,6 +219,9 @@ def generate_launch_description():
     tof_rows_config = PathJoinSubstitution(
         [FindPackageShare('rev_base_tools'), 'config', 'tof_rows.yaml']
     )
+    tof_sim_config = PathJoinSubstitution(
+        [FindPackageShare('rev_base_tools'), 'config', 'tof_sim.yaml']
+    )
     rviz_config = PathJoinSubstitution(
         [description_share, 'rviz', 'mobile_base_sim.rviz']
     )
@@ -444,7 +447,9 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 'seed',
                 default_value='1',
-                description='Gazebo RNG seed: sets the IMU bias draw.',
+                description=(
+                    'RNG seed: sets the IMU bias draw and the ToF '
+                    'noise and dropout.'),
             ),
             DeclareLaunchArgument(
                 'imu_bias',
@@ -523,7 +528,11 @@ def generate_launch_description():
                     '/tof/right/points@sensor_msgs/msg/PointCloud2'
                     '[gz.msgs.PointCloudPacked',
                 ],
-                remappings=[('/tof_camera/points', '/tof_camera/points_raw')],
+                remappings=[
+                    ('/tof_camera/points', '/tof_camera/points_raw'),
+                    *[(f'/tof/{face}/points', f'/tof/{face}/points_raw')
+                      for face in ('front', 'rear', 'left', 'right')],
+                ],
                 parameters=[
                     {
                         'use_sim_time': LaunchConfiguration(
@@ -552,6 +561,22 @@ def generate_launch_description():
                         'use_sim_time': LaunchConfiguration(
                             'use_sim_time'
                         )
+                    }
+                ],
+                output='screen',
+            ),
+            # Stands in for the real ToF driver: range noise and zone
+            # dropout, /tof/<face>/points_raw -> /tof/<face>/points.
+            Node(
+                package='rev_base_tools',
+                executable='tof_sim',
+                name='tof_sim',
+                parameters=[
+                    tof_sim_config,
+                    {
+                        'seed': ParameterValue(
+                            LaunchConfiguration('seed'), value_type=int),
+                        'use_sim_time': LaunchConfiguration('use_sim_time'),
                     }
                 ],
                 output='screen',
