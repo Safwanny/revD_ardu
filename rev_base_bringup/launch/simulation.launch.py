@@ -39,6 +39,7 @@ from launch.substitutions import (
     Command,
     LaunchConfiguration,
     PathJoinSubstitution,
+    PythonExpression,
 )
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -218,6 +219,10 @@ def generate_launch_description():
     ekf_config = PathJoinSubstitution([bringup_share, 'config', 'ekf.yaml'])
     safety_config = PathJoinSubstitution(
         [bringup_share, 'config', 'safety.yaml'])
+    bug_nav_config = PathJoinSubstitution(
+        [bringup_share, 'config', 'bug_nav.yaml'])
+    tof_only = PythonExpression(
+        ["'", LaunchConfiguration('mode'), "' == 'tof_only'"])
     tof_rows_config = PathJoinSubstitution(
         [FindPackageShare('rev_base_tools'), 'config', 'tof_rows.yaml']
     )
@@ -381,8 +386,17 @@ def generate_launch_description():
         Node(
             package='rev_base_tools',
             executable='safety_governor',
-            parameters=[safety_config, sim_time],
+            parameters=[safety_config, sim_time, {
+                'tof_only': ParameterValue(tof_only, value_type=bool)}],
             output='screen',
+        ),
+        # ToF-only failsafe: DistBug to a goal clicked in RViz.
+        Node(
+            package='rev_base_tools',
+            executable='bug_nav',
+            parameters=[bug_nav_config, sim_time],
+            output='screen',
+            condition=IfCondition(tof_only),
         ),
     ]
     rviz = Node(
@@ -477,6 +491,14 @@ def generate_launch_description():
                 description=(
                     'Remove the gyro bias learnt at standstill; false '
                     'passes /imu/data through unchanged.'),
+            ),
+            DeclareLaunchArgument(
+                'mode',
+                default_value='normal',
+                description=(
+                    "'tof_only': the failsafe for when only the ToF ring "
+                    'works: motion along the sensing axes, spins only when '
+                    'clear, and bug_nav drives to RViz goals.'),
             ),
             DeclareLaunchArgument('x', default_value='0.0'),
             DeclareLaunchArgument('y', default_value='0.0'),

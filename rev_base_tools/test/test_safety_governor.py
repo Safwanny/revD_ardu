@@ -1,9 +1,11 @@
 import math
+from collections import deque
 from types import SimpleNamespace
 
 import numpy as np
 from rev_base_tools.safety_governor import (
-    beside, govern, path_distance, stopping_speed, turn_angle)
+    axis_only, beside, govern, path_distance, spin_clear, stopping_speed,
+    ToFMemory, turn_angle)
 
 P = SimpleNamespace(
     half_length=0.15, half_width=0.11, max_speed=0.45, max_angular=2.5,
@@ -96,3 +98,25 @@ def test_stale_face_blocks_only_its_side():
     assert govern(0.0, 0.0, 1.0, empty, ages, P)[2] == 0.0
     vx, _, _ = govern(0.3, 0.0, 0.0, empty, dict(FRESH, front=0.3), P)
     assert math.isclose(vx, P.creep_speed)
+
+
+def test_axis_only():
+    p = SimpleNamespace(**vars(P), trim_angular=0.2, spin_margin=0.02)
+    empty = np.empty((0, 2))
+    assert axis_only(0.3, 0.1, 1.0, empty, p) == (0.3, 0.0, 0.2)
+    assert axis_only(0.1, -0.3, 0.0, empty, p) == (0.0, -0.3, 0.0)
+    assert axis_only(0.0, 0.0, 1.0, empty, p) == (0.0, 0.0, 1.0)
+    # Something inside the corner circle: no standing spin.
+    near = np.array([[0.19, 0.0]])
+    assert axis_only(0.0, 0.0, 1.0, near, p) == (0.0, 0.0, 0.0)
+    assert spin_clear(np.array([[0.22, 0.0]]), HALF, 0.02)
+
+
+def test_memory_points_in_base_frame():
+    memory = ToFMemory.__new__(ToFMemory)
+    memory.p = SimpleNamespace(memory=3.0)
+    memory.now = lambda: 0.0
+    memory.memory = deque([(0.0, np.array([[2.0, 1.0]]))])
+    # Base at (1, 1) facing +y: the point is 1 m to its right.
+    points = memory.points((1.0, 1.0, math.pi / 2))
+    assert np.allclose(points, [[0.0, -1.0]])

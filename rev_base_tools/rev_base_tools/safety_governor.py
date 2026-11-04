@@ -153,6 +153,114 @@ def govern(vx, vy, wz, points, ages, p):
     return vx * scale, vy * scale, wz * scale
 
 
+def spin_clear(points, half, margin):
+    """Return True if no point outside the hull is within its corner circle.
+
+    That circle plus ``margin`` is what a standing spin sweeps.
+    """
+    h = np.asarray(half, dtype=float)
+    outside = ~np.all(np.abs(points) <= h, axis=1)
+    r = np.hypot(points[:, 0], points[:, 1])
+    return not np.any(outside & (r <= np.hypot(*h) + margin))
+
+
+def axis_only(vx, vy, wz, points, p):
+    """Snap a command to what ToF-only mode allows.
+
+    Translation only along the sensing axes (the larger of vx, vy), with at
+    most ``trim_angular`` of heading trim; a standing spin only when
+    ``spin_clear``.
+    """
+    if vx or vy:
+        if abs(vx) >= abs(vy):
+            vy = 0.0
+        else:
+            vx = 0.0
+        wz = max(-p.trim_angular, min(p.trim_angular, wz))
+    elif wz and not spin_clear(points, (p.half_length, p.half_width),
+                               p.spin_margin):
+        wz = 0.0
+    return vx, vy, wz
+
+
+class ToFMemory:
+    """The ToF rows of all faces, kept ``memory`` seconds in odom.
+
+    Up close no face sees the hull corners (each covers only +-30 deg), so
+    what the faces saw a moment ago stands in for them.
+    """
+
+    def __init__(self, node, p):
+        self.node, self.p = node, p
+        self.tf = Buffer()
+        TransformListener(self.tf, node)
+        self.memory = deque()  # (seconds, N x 2 points in odom)
+        self.seen = {face: -math.inf for face in p.faces}
+        qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
+        for face in p.faces:
+            node.create_subscription(
+                PointCloud2, '/tof/{}/rows'.format(face),
+                lambda message, face=face: self.on_cloud(face, message), qos)
+
+    def now(self):
+        return self.node.get_clock().now().nanoseconds * 1e-9
+
+    def warn(self, error):
+        self.node.get_logger().warn(str(error), throttle_duration_sec=5.0)
+
+    def on_cloud(self, face, message):
+        self.seen[face] = self.now()
+        try:
+            transform = self.tf.lookup_transform(
+                self.p.odom_frame, message.header.frame_id,
+                message.header.stamp)
+        except TransformException:
+            try:
+                transform = self.tf.lookup_transform(
+                    self.p.odom_frame, message.header.frame_id, Time())
+            except TransformException as error:
+                self.warn(error)
+                return
+        # Points only: do_transform_cloud rebuilds the cloud and fails on
+        # Gazebo's padded point layout.
+        xyz = transform_points(point_cloud2.read_points_numpy(
+            message, field_names=('x', 'y', 'z'), skip_nans=True),
+            transform.transform)
+        # odom z is height above the floor (the EKF runs in 2D).
+        keep = (xyz[:, 2] >= self.p.min_height) \
+            & (xyz[:, 2] <= self.p.max_height)
+        self.memory.append((self.now(), xyz[keep, :2]))
+
+    def pose(self):
+        """Return (x, y, yaw) of the base in odom, or None without TF."""
+        try:
+            t = self.tf.lookup_transform(
+                self.p.odom_frame, self.p.base_frame, Time()).transform
+        except TransformException as error:
+            self.warn(error)
+            return None
+        q = t.rotation
+        return (t.translation.x, t.translation.y,
+                math.atan2(2.0 * (q.w * q.z + q.x * q.y),
+                           1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
+
+    def points(self, pose):
+        """Return the kept points as N x 2 in the base frame at ``pose``."""
+        now = self.now()
+        while self.memory and now - self.memory[0][0] > self.p.memory:
+            self.memory.popleft()
+        if not self.memory:
+            return np.empty((0, 2))
+        x, y, yaw = pose
+        c, s = math.cos(yaw), math.sin(yaw)
+        odom = np.concatenate([xy for _, xy in self.memory]) - (x, y)
+        return odom @ np.array([[c, -s], [s, c]])
+
+    def ages(self):
+        now = self.now()
+        return {face: now - seen for face, seen in self.seen.items()}
+
+
 class SafetyGovernor(Node):
     """Limit /cmd_vel_mux by the ToF ring and pass it to the controller."""
 
@@ -166,79 +274,34 @@ class SafetyGovernor(Node):
             'creep_speed': 0.03,
             'side_gap': 0.05, 'side_factor': 0.6, 'min_height': 0.02,
             'max_height': 0.20, 'memory': 3.0, 'slow_after': 0.2,
-            'stale_after': 0.75}
+            'stale_after': 0.75, 'tof_only': False, 'trim_angular': 0.2,
+            'spin_margin': 0.02}
         for name, value in defaults.items():
             self.declare_parameter(name, value)
         self.p = SimpleNamespace(**{name: self.get_parameter(name).value
                                     for name in defaults})
-        self.tf = Buffer()
-        TransformListener(self.tf, self)
-        self.memory = deque()  # (seconds, N x 2 points in odom)
-        self.seen = {face: -math.inf for face in self.p.faces}
-        qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
-        for face in self.p.faces:
-            self.create_subscription(
-                PointCloud2, '/tof/{}/rows'.format(face),
-                lambda message, face=face: self.on_cloud(face, message), qos)
+        self.tof = ToFMemory(self, self.p)
         self.output = self.create_publisher(
             TwistStamped, '/mobile_base_controller/reference', 10)
         self.create_subscription(
             TwistStamped, '/cmd_vel_mux', self.on_command, 10)
 
-    def now(self):
-        return self.get_clock().now().nanoseconds * 1e-9
-
-    def on_cloud(self, face, message):
-        self.seen[face] = self.now()
-        try:
-            transform = self.tf.lookup_transform(
-                self.p.odom_frame, message.header.frame_id,
-                message.header.stamp)
-        except TransformException:
-            try:
-                transform = self.tf.lookup_transform(
-                    self.p.odom_frame, message.header.frame_id, Time())
-            except TransformException as error:
-                self.get_logger().warn(str(error), throttle_duration_sec=5.0)
-                return
-        # Points only: do_transform_cloud rebuilds the cloud and fails on
-        # Gazebo's padded point layout.
-        xyz = transform_points(point_cloud2.read_points_numpy(
-            message, field_names=('x', 'y', 'z'), skip_nans=True),
-            transform.transform)
-        # odom z is height above the floor (the EKF runs in 2D).
-        keep = (xyz[:, 2] >= self.p.min_height) \
-            & (xyz[:, 2] <= self.p.max_height)
-        self.memory.append((self.now(), xyz[keep, :2]))
-
     def on_command(self, message):
-        now = self.now()
-        while self.memory and now - self.memory[0][0] > self.p.memory:
-            self.memory.popleft()
         out = TwistStamped()
         out.header = message.header
-        try:
-            pose = self.tf.lookup_transform(
-                self.p.base_frame, self.p.odom_frame, Time()).transform
-        except TransformException as error:
+        pose = self.tof.pose()
+        if pose is None:
             # No pose, no memory: publish zero rather than drive blind.
-            self.get_logger().warn(str(error), throttle_duration_sec=5.0)
             self.output.publish(out)
             return
-        q = pose.rotation
-        yaw = math.atan2(2.0 * (q.w * q.z + q.x * q.y),
-                         1.0 - 2.0 * (q.y * q.y + q.z * q.z))
-        c, s = math.cos(yaw), math.sin(yaw)
-        odom = np.concatenate([xy for _, xy in self.memory]) \
-            if self.memory else np.empty((0, 2))
-        points = odom @ np.array([[c, s], [-s, c]]) \
-            + (pose.translation.x, pose.translation.y)
-        ages = {face: now - seen for face, seen in self.seen.items()}
+        points = self.tof.points(pose)
         twist = message.twist
+        command = (twist.linear.x, twist.linear.y, twist.angular.z)
+        if self.p.tof_only:
+            command = axis_only(*command, points, self.p)
         (out.twist.linear.x, out.twist.linear.y,
-         out.twist.angular.z) = govern(
-            twist.linear.x, twist.linear.y, twist.angular.z, points, ages,
-            self.p)
+         out.twist.angular.z) = govern(*command, points, self.tof.ages(),
+                                       self.p)
         self.output.publish(out)
 
 
