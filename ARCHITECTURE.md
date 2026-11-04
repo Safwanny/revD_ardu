@@ -3,7 +3,7 @@
 ROS 2 Jazzy, Gazebo Harmonic, one un-namespaced robot. The URDF robot name is
 `mobile_base`. The scope is the robot model (Rev D v4 with the type_04M_Ardu
 pan turret, CAD `Rev_D_T4M_ardu`), its ToF sensors and IMU, manual driving,
-turret panning and wheel + gyro odometry; nothing maps or plans yet. There is no LiDAR.
+turret panning, wheel + gyro odometry and the ToF safety chain; nothing maps or plans yet. There is no LiDAR.
 
 ## Package map
 
@@ -17,9 +17,13 @@ turret panning and wheel + gyro odometry; nothing maps or plans yet. There is no
 ## Runtime data flow
 
 ```text
-teleop_twist_keyboard (stamped)
-        |
-        v
+teleop_twist_keyboard --> /cmd_vel_teleop --+
+(Nav2, later)         --> /cmd_vel_nav    --+--> twist_mux --> /cmd_vel_mux
+/e_stop (Bool lock)                       --+         |
+                                                      v
+/tof/<face>/rows --------------------------> collision_monitor
+                                                      |
+                                                      v
 /mobile_base_controller/reference  (TwistStamped, body frame)
         |
         v
@@ -234,6 +238,32 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 - **Covariances:** odometry covariances are constant, and sideways velocity
   gets less confidence than forward.
 
+## Safety chain
+
+`config/safety.yaml`:
+
+- **twist_mux** picks the driver: `/cmd_vel_teleop` (priority 100) over
+  `/cmd_vel_nav` (10), each dropped after 0.5 s of silence. `/e_stop`
+  (`std_msgs/Bool`, priority 255) blocks both while true. It is latched, with
+  no heartbeat yet.
+- **collision_monitor** (Nav2, lifecycle-managed by
+  `lifecycle_manager_safety`) is the only writer of
+  `/mobile_base_controller/reference`, stamped. Sources are the four
+  `/tof/<face>/rows` clouds, points 0.02-0.20 m above the floor.
+  - `keep_out`: the hull (±0.15 × ±0.11 m with wheels) grown by 0.15 m, as an
+    `approach` footprint, `time_before_collision` 1 s. It rolls (vx, vy, wz)
+    forward and slows the robot so it stops at the zone edge, whatever the
+    direction, and stops it if two or more points are already inside. A
+    `stop` polygon of the same size would also block driving away, so there
+    is none.
+  - `speed_cap`: an always-on `limit` (`min_points` 0), 0.30 m/s and
+    1.7 rad/s.
+  - A face whose cloud is older than 0.2 s stops the robot.
+- `odom_eval` publishes straight to the controller, bypassing the chain: it
+  is an evaluation tool for open floor.
+- The ToF driver's "trust a new close return after two frames" rule is not
+  modelled; `tof_sim` makes no false returns.
+
 ## State estimation
 
 `robot_localization`'s `ekf_node` (`config/ekf.yaml`), `two_d_mode`, 50 Hz:
@@ -263,6 +293,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Move or retune a sensor | `properties.xacro` (pose, range, rate), `tof_sim.yaml` (ToF noise, dropout), the sensor's `*.gazebo.xacro`, then `test_sensor_topics.py` |
 | Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |
 | Change which ToF rows are kept | `rev_base_tools/config/tof_rows.yaml` |
+| Change the safety chain | `config/safety.yaml`, then `test_safety_chain.py` |
 | Change the odometry fusion | `config/ekf.yaml` or `imu_bias.py`, then `odom_eval` |
 | Change the RViz view | `rev_base_description/rviz/mobile_base_sim.rviz` |
 

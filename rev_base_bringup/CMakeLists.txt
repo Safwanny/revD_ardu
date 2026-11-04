@@ -35,6 +35,18 @@ if(BUILD_TESTING)
         "ROS_LOG_DIR=${CMAKE_CURRENT_BINARY_DIR}/ros_logs;ROS_DOMAIN_ID=31;GZ_PARTITION=mobile_base_sensor_test"
       RUN_SERIAL TRUE
   )
+
+  add_launch_test(
+    test/test_safety_chain.py
+    TIMEOUT 400
+  )
+  set_tests_properties(
+    test_test_safety_chain.py
+    PROPERTIES
+      ENVIRONMENT
+        "ROS_LOG_DIR=${CMAKE_CURRENT_BINARY_DIR}/ros_logs;ROS_DOMAIN_ID=32;GZ_PARTITION=mobile_base_safety_test"
+      RUN_SERIAL TRUE
+  )
 endif()
 
 ament_package()

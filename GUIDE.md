@@ -66,8 +66,9 @@ ros2 launch rev_base_bringup camera_view.launch.py
 
 ## Drive it
 
-Run teleop in its own terminal, since it needs keyboard focus. Commands go
-straight to the controller as stamped body-frame twists:
+Run teleop in its own terminal, since it needs keyboard focus. Commands are
+stamped body-frame twists on `/cmd_vel_teleop`, and go through the safety
+chain (`twist_mux`, then `collision_monitor`) to the controller:
 
 ```bash
 source ~/ros2_ws/install/setup.bash
@@ -77,7 +78,7 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args \
   -p speed:=0.15 \
   -p turn:=0.5 \
   -p use_sim_time:=true \
-  -r cmd_vel:=/mobile_base_controller/reference
+  -r cmd_vel:=/cmd_vel_teleop
 ```
 
 | Key | Motion |
@@ -95,6 +96,18 @@ Teleop sends one message per keypress and never sends anything when a key is
 released. The robot keeps its last command until the controller's 0.5 s
 `reference_timeout` runs out, which is about 7.5 cm at 0.15 m/s. Press `k` to
 stop on purpose.
+
+The safety chain caps speed at 0.30 m/s and slows the robot so that it stops
+about 0.15 m short of anything the ToF ring sees, in any direction; driving
+away is always allowed. If a ToF face goes quiet for 0.2 s it stops. E-stop
+and release:
+
+```bash
+ros2 topic pub --once /e_stop std_msgs/msg/Bool "{data: true}"
+ros2 topic pub --once /e_stop std_msgs/msg/Bool "{data: false}"
+```
+
+`ros2 topic echo /collision_monitor_state` says which zone is acting.
 
 ## Score the odometry
 
@@ -186,8 +199,9 @@ colcon test-result --verbose
 | `test_worlds.py` | each world parses, needs no downloads, loads the IMU system and renders with `ogre2` |
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
 | `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint |
+| `test_safety_chain.py` | launches Gazebo headless and drives at the walls forward, sideways and diagonally through the safety chain: stops short, under the speed cap, can back away; the e-stop holds |
 | `rev_base_tools/test/` | ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
 
-`test_sensor_topics.py` runs on its own `ROS_DOMAIN_ID` and `GZ_PARTITION`, set
-in `rev_base_bringup/CMakeLists.txt`, and needs a GPU for `ogre2`. CI excludes
-it.
+`test_sensor_topics.py` and `test_safety_chain.py` each run on their own
+`ROS_DOMAIN_ID` and `GZ_PARTITION`, set in `rev_base_bringup/CMakeLists.txt`,
+and need a GPU for `ogre2`. CI excludes them.

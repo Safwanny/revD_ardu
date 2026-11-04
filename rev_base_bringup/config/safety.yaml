@@ -1,0 +1,95 @@
+# Safety chain: every velocity command goes
+#   /cmd_vel_teleop, /cmd_vel_nav -> twist_mux -> /cmd_vel_mux
+#   -> collision_monitor -> /mobile_base_controller/reference
+# All TwistStamped. The controller's 0.5 s reference_timeout stops the wheels
+# when the chain goes quiet.
+
+# Teleop overrides Nav2. /e_stop (std_msgs/Bool, true = locked) blocks every
+# input until false is published. timeout 0.0: a latched lock, no heartbeat;
+# give it one (> 0) once something on the robot publishes it continuously.
+twist_mux:
+  ros__parameters:
+    topics:
+      teleop:
+        topic: /cmd_vel_teleop
+        timeout: 0.5
+        priority: 100
+      navigation:
+        topic: /cmd_vel_nav
+        timeout: 0.5
+        priority: 10
+    locks:
+      e_stop:
+        topic: /e_stop
+        timeout: 0.0
+        priority: 255
+
+# Hull with wheels: body 296.9 x 168.1 mm, wheel outer faces at
+# +-(186.5 + 31.5) / 2 mm (properties.xacro), so +-0.15 x +-0.11 m.
+collision_monitor:
+  ros__parameters:
+    base_frame_id: base_footprint
+    odom_frame_id: odom
+    cmd_vel_in_topic: /cmd_vel_mux
+    cmd_vel_out_topic: /mobile_base_controller/reference
+    enable_stamped_cmd_vel: true
+    state_topic: collision_monitor_state
+    transform_tolerance: 0.1
+    # Two frames at 15 Hz plus slack. A face whose cloud is older stops the
+    # robot ("invalid source").
+    source_timeout: 0.2
+    base_shift_correction: true
+    stop_pub_timeout: 1.0
+    polygons: [keep_out, speed_cap]
+    # The hull grown by 0.15 m, rolled forward along (vx, vy, wz): the robot
+    # slows so that it never reaches it, in any direction, and stops if
+    # anything is already inside. As a stop polygon it would also block
+    # driving away; as the approach footprint it does not.
+    keep_out:
+      type: polygon
+      action_type: approach
+      points: "[[0.30, 0.26], [0.30, -0.26], [-0.30, -0.26], [-0.30, 0.26]]"
+      time_before_collision: 1.0
+      simulation_time_step: 0.05
+      # One zone covers 7.5 deg; two keeps a lone noisy zone from stopping it.
+      min_points: 2
+      visualize: true
+      polygon_pub_topic: keep_out
+    # 0.30 m/s and the wheels' own ~1.7 rad/s yaw (10.47 rad/s * 0.02996 m
+    # / 0.18268 m). ponytail: an always-on limit (min_points 0); a speed
+    # field in a velocity smoother replaces it when Nav2 brings one.
+    speed_cap:
+      type: polygon
+      action_type: limit
+      points: "[[0.15, 0.11], [0.15, -0.11], [-0.15, -0.11], [-0.15, 0.11]]"
+      min_points: 0
+      linear_limit: 0.30
+      angular_limit: 1.7
+    observation_sources: [tof_front, tof_rear, tof_left, tof_right]
+    # Rows 4-6 of each face (tof_rows.yaml). min_height drops floor hits
+    # (row 4 meets the floor at 0.24 m); max_height clears the turret.
+    tof_front:
+      type: pointcloud
+      topic: /tof/front/rows
+      min_height: 0.02
+      max_height: 0.20
+    tof_rear:
+      type: pointcloud
+      topic: /tof/rear/rows
+      min_height: 0.02
+      max_height: 0.20
+    tof_left:
+      type: pointcloud
+      topic: /tof/left/rows
+      min_height: 0.02
+      max_height: 0.20
+    tof_right:
+      type: pointcloud
+      topic: /tof/right/rows
+      min_height: 0.02
+      max_height: 0.20
+
+lifecycle_manager_safety:
+  ros__parameters:
+    autostart: true
+    node_names: [collision_monitor]

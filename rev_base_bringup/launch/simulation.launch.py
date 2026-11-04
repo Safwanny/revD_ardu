@@ -216,6 +216,8 @@ def generate_launch_description():
         [bringup_share, 'config', 'controllers.yaml']
     )
     ekf_config = PathJoinSubstitution([bringup_share, 'config', 'ekf.yaml'])
+    safety_config = PathJoinSubstitution(
+        [bringup_share, 'config', 'safety.yaml'])
     tof_rows_config = PathJoinSubstitution(
         [FindPackageShare('rev_base_tools'), 'config', 'tof_rows.yaml']
     )
@@ -365,6 +367,31 @@ def generate_launch_description():
         ],
         output='screen',
     )
+    sim_time = {'use_sim_time': LaunchConfiguration('use_sim_time')}
+    # Safety chain (config/safety.yaml): drivers publish on /cmd_vel_teleop
+    # or /cmd_vel_nav; only collision_monitor writes the controller input.
+    safety_chain = [
+        Node(
+            package='twist_mux',
+            executable='twist_mux',
+            parameters=[safety_config, sim_time],
+            remappings=[('cmd_vel_out', '/cmd_vel_mux')],
+            output='screen',
+        ),
+        Node(
+            package='nav2_collision_monitor',
+            executable='collision_monitor',
+            parameters=[safety_config, sim_time],
+            output='screen',
+        ),
+        Node(
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_safety',
+            parameters=[safety_config, sim_time],
+            output='screen',
+        ),
+    ]
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -479,6 +506,7 @@ def generate_launch_description():
             robot_state_publisher,
             imu_bias,
             ekf,
+            *safety_chain,
             RegisterEventHandler(
                 OnProcessExit(
                     target_action=generate_sdf,

@@ -16,6 +16,8 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>mecanum_drive_controller</exec_depend>
+  <exec_depend>nav2_collision_monitor</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>position_controllers</exec_depend>
   <exec_depend>rev_base_description</exec_depend>
@@ -29,11 +31,13 @@
   <exec_depend>rviz2</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>teleop_twist_keyboard</exec_depend>
+  <exec_depend>twist_mux</exec_depend>
   <exec_depend>xacro</exec_depend>
   <exec_depend>rqt_image_view</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
+  <test_depend>geometry_msgs</test_depend>
   <test_depend>launch_testing</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>rclpy</test_depend>
