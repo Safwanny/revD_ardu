@@ -369,7 +369,7 @@ def generate_launch_description():
     )
     sim_time = {'use_sim_time': LaunchConfiguration('use_sim_time')}
     # Safety chain (config/safety.yaml): drivers publish on /cmd_vel_teleop
-    # or /cmd_vel_nav; only collision_monitor writes the controller input.
+    # or /cmd_vel_nav; only safety_governor writes the controller input.
     safety_chain = [
         Node(
             package='twist_mux',
@@ -379,15 +379,8 @@ def generate_launch_description():
             output='screen',
         ),
         Node(
-            package='nav2_collision_monitor',
-            executable='collision_monitor',
-            parameters=[safety_config, sim_time],
-            output='screen',
-        ),
-        Node(
-            package='nav2_lifecycle_manager',
-            executable='lifecycle_manager',
-            name='lifecycle_manager_safety',
+            package='rev_base_tools',
+            executable='safety_governor',
             parameters=[safety_config, sim_time],
             output='screen',
         ),

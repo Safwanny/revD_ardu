@@ -16,8 +16,6 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>mecanum_drive_controller</exec_depend>
-  <exec_depend>nav2_collision_monitor</exec_depend>
-  <exec_depend>nav2_lifecycle_manager</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>position_controllers</exec_depend>
   <exec_depend>rev_base_description</exec_depend>

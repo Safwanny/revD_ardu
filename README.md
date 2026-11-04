@@ -30,9 +30,9 @@ navigation, perception) gets rebuilt for Rev D from here.
 Rev D has no LiDAR any more.
 
 - **Safety chain.** Teleop and navigation commands go through `twist_mux`
-  (with an e-stop lock) and Nav2's `collision_monitor` on the ToF ring: 0.30 m/s
-  cap, stops 0.15 m short of obstacles in any direction, stops if a sensor
-  goes quiet.
+  (with an e-stop lock) and a speed governor on the ToF ring: 0.45 m/s cap,
+  slows only motion that closes on an obstacle so it can stop 3 cm short,
+  slows beside walls without stopping, and never blocks driving away.
 - **Visualisation.** RViz shows the ToF rows that are kept,
   faint ToF rays, and the camera's 3D depth cloud. A separate window shows the
   camera depth colour-graded: near is red, far is blue, no return is black.

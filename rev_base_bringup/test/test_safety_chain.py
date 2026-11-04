@@ -18,10 +18,12 @@ Drive Rev D at the walls through the safety chain and check it stops short.
 
 navigation_basic, spawned at (SPAWN) facing +X, in the open corner between
 the interior wall and the north-east walls. Teleop commands go in on
-/cmd_vel_teleop at more than the speed cap; Gazebo's true pose (tests may
-read it) measures the gap between the hull and the wall. In order: the e-stop
-lock holds the robot, then forward, sideways and diagonal runs, each followed
-by backing away, which the keep-out zone must allow.
+/cmd_vel_teleop above the speed cap; Gazebo's true pose (tests may read it)
+measures the gap between the hull and the walls. In order: the e-stop lock
+holds the robot, it drives forward to the east wall, slides along it
+(slowed, never stopped, by the wall beside it) into the north-east corner,
+escapes the corner both ways, drives diagonally back into the corner and
+away again, then spins in the open.
 """
 
 import math
@@ -43,9 +45,10 @@ SPAWN = (3.0, 1.0)
 EAST_WALL_X = 5.0 - 0.075   # inner faces, navigation_basic.sdf
 NORTH_WALL_Y = 4.0 - 0.075
 HULL = ((0.15, 0.11), (0.15, -0.11), (-0.15, -0.11), (-0.15, 0.11))
-COMMAND = 0.5               # above the 0.30 m/s cap
-SPEED_CAP = 0.30
-KEEP_OUT = 0.15             # config/safety.yaml keep_out minus the hull
+COMMAND = 0.6               # above the 0.45 m/s cap (config/safety.yaml)
+SPEED_CAP = 0.45
+SIDE_CAP = 0.6 * SPEED_CAP  # a wall within 5 cm of the side
+MIN_GAP = 0.03
 
 
 def generate_test_description():
@@ -111,51 +114,46 @@ class TestSafetyChain(unittest.TestCase):
         c, s = math.cos(yaw), math.sin(yaw)
         return [(x + c * hx - s * hy, y + s * hx + c * hy) for hx, hy in HULL]
 
-    def gap(self):
-        """Smallest distance from the hull to the east or north wall."""
+    def gaps(self):
+        """Distances from the hull to the east and the north wall."""
         corners = self.hull()
-        return min(EAST_WALL_X - max(cx for cx, _ in corners),
-                   NORTH_WALL_Y - max(cy for _, cy in corners))
+        return (EAST_WALL_X - max(cx for cx, _ in corners),
+                NORTH_WALL_Y - max(cy for _, cy in corners))
 
-    def drive(self, vx, vy, seconds, until_stopped=False):
-        """Publish teleop at 20 Hz; return the top speed seen."""
-        top, still_since = 0.0, None
+    def drive(self, vx, vy, seconds, wz=0.0, until_stopped=False):
+        """Publish teleop at 20 Hz; return the top speed and smallest gap."""
+        top, closest, still_since = 0.0, math.inf, None
         end = time.monotonic() + seconds
         while time.monotonic() < end:
             command = TwistStamped()
             command.header.stamp = self.node.get_clock().now().to_msg()
             command.header.frame_id = 'base_link'
             command.twist.linear.x, command.twist.linear.y = vx, vy
+            command.twist.angular.z = wz
             self.teleop.publish(command)
             self.spin(0.05)
             top = max(top, self.speed)
+            closest = min(closest, *self.gaps())
             if until_stopped and top > 0.1:
                 still_since = (still_since or time.monotonic()) \
                     if self.speed < 0.005 else None
                 if still_since and time.monotonic() - still_since > 2.0:
                     break
         self.spin(1.0)  # let the 0.5 s reference timeout stop the wheels
-        return top
+        return top, closest
 
-    def run_at_wall(self, vx, vy, name):
-        top = self.drive(vx, vy, 60.0, until_stopped=True)
-        gap = self.gap()
-        print(f'{name}: top speed {top:.3f} m/s, stopped {gap:.3f} m '
-              'from the wall')
-        self.assertLessEqual(top, SPEED_CAP + 0.02, name)
-        self.assertGreater(gap, 0.05, f'{name}: too close to the wall')
-        self.assertLess(gap, KEEP_OUT + 0.05, f'{name}: stopped far short')
-        # The keep-out zone must let it drive away again.
-        before = self.gap()
-        self.drive(-vx, -vy, 2.0)
-        self.assertGreater(self.gap() - before, 0.2, f'{name}: stuck')
+    def stopped_at_wall(self, name, gap, closest):
+        print(f'{name}: stopped {gap:.3f} m from the wall, closest '
+              f'{closest:.3f} m')
+        self.assertGreater(closest, 0.0, f'{name}: touched the wall')
+        self.assertLess(gap, MIN_GAP + 0.03, f'{name}: stopped far short')
 
     def test_safety_chain(self):
         deadline = time.monotonic() + 120.0
         while self.pose is None and time.monotonic() < deadline:
             self.spin(0.2)
         self.assertIsNotNone(self.pose, 'no ground truth')
-        self.spin(10.0)  # controllers, EKF and collision_monitor come up
+        self.spin(10.0)  # controllers, EKF and the ToF clouds come up
 
         self.e_stop.publish(Bool(data=True))
         self.spin(0.5)
@@ -166,7 +164,39 @@ class TestSafetyChain(unittest.TestCase):
         self.e_stop.publish(Bool(data=False))
         self.spin(0.5)
 
-        self.run_at_wall(COMMAND, 0.0, 'forward')
-        self.run_at_wall(0.0, COMMAND, 'sideways')
+        top, closest = self.drive(COMMAND, 0.0, 60.0, until_stopped=True)
+        print(f'forward: top speed {top:.3f} m/s')
+        self.assertGreater(top, SPEED_CAP - 0.05, 'forward: never reached '
+                           'the cap in the open')
+        self.assertLessEqual(top, SPEED_CAP + 0.02, 'forward: over the cap')
+        self.stopped_at_wall('forward', self.gaps()[0], closest)
+
+        # Along the east wall, 3 cm away: slowed, not stopped.
+        top, closest = self.drive(0.0, COMMAND, 60.0, until_stopped=True)
+        print(f'along the wall: top speed {top:.3f} m/s')
+        self.assertGreater(top, SIDE_CAP - 0.05, 'along: too slow')
+        self.assertLessEqual(top, SIDE_CAP + 0.02, 'along: side cap unused')
+        self.stopped_at_wall('along the wall', self.gaps()[1], closest)
+
+        # In the corner, each way out moves.
+        for name, vx, vy, wall in (('out of the corner -y', 0.0, -COMMAND, 1),
+                                   ('out of the corner -x', -COMMAND, 0.0, 0)):
+            before = self.gaps()[wall]
+            self.drive(vx, vy, 1.5)
+            print(f'{name}: gained {self.gaps()[wall] - before:.3f} m')
+            self.assertGreater(self.gaps()[wall] - before, 0.15, name)
+
         diagonal = COMMAND / math.sqrt(2.0)
-        self.run_at_wall(diagonal, diagonal, 'diagonal')
+        _, closest = self.drive(diagonal, diagonal, 60.0, until_stopped=True)
+        self.stopped_at_wall('diagonal', min(self.gaps()), closest)
+        before = min(self.gaps())
+        self.drive(-diagonal, -diagonal, 2.0)
+        self.assertGreater(min(self.gaps()) - before, 0.2, 'diagonal: stuck')
+
+        # Clear of the walls now: turning is free. Last, so a leftover
+        # heading does not skew the runs above.
+        heading = self.pose[2]
+        self.drive(0.0, 0.0, 1.0, wz=1.0)
+        turned = abs(self.pose[2] - heading)
+        print(f'spin: turned {turned:.2f} rad')
+        self.assertGreater(turned, 0.5, 'did not turn in the open')

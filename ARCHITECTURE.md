@@ -12,7 +12,7 @@ turret panning, wheel + gyro odometry and the ToF safety chain; nothing maps or 
 | `rev_base_description` | `urdf/` Xacro model, `meshes/rev_d/` (installed from the repo root), `rviz/`, `display.launch.py` for the model alone, `scripts/import_rev_d_meshes.py` |
 | `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall) |
 | `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `scripts/generate_sim_sdf.py` |
-| `rev_base_tools` | `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
+| `rev_base_tools` | `safety_governor`, `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
 
 ## Runtime data flow
 
@@ -21,7 +21,7 @@ teleop_twist_keyboard --> /cmd_vel_teleop --+
 (Nav2, later)         --> /cmd_vel_nav    --+--> twist_mux --> /cmd_vel_mux
 /e_stop (Bool lock)                       --+         |
                                                       v
-/tof/<face>/rows --------------------------> collision_monitor
+/tof/<face>/rows --------------------------> safety_governor
                                                       |
                                                       v
 /mobile_base_controller/reference  (TwistStamped, body frame)
@@ -83,7 +83,7 @@ measurement or source next to it. Highlights:
 | Deck top | 58.06 mm; M3 insert grid at 20 mm pitch (`Deck_plate_T` loses five inserts to the turret) |
 | Turret | pan axis (35.79, 0) mm on the deck top, ±138° hard stops, ±135° URDF limit |
 | Mass | 1.40 kg body + 4 × 0.08 kg wheels + 0.12 kg turret: estimates, to replace by weighing |
-| Wheel speed limit | 10.47 rad/s (100 rpm assumed until the real gearing is known) |
+| Wheel speed limit | 15.7 rad/s (JGY370 150 rpm, no-load), 0.47 m/s at the wheel |
 
 The meshes come from `rev_base_description/scripts/import_rev_d_meshes.py`. It
 reads the per-link STLs in `Rev_D_T4M_ardu/ros2/meshes`, simplifies them about
@@ -246,19 +246,26 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
   `/cmd_vel_nav` (10), each dropped after 0.5 s of silence. `/e_stop`
   (`std_msgs/Bool`, priority 255) blocks both while true. It is latched, with
   no heartbeat yet.
-- **collision_monitor** (Nav2, lifecycle-managed by
-  `lifecycle_manager_safety`) is the only writer of
-  `/mobile_base_controller/reference`, stamped. Sources are the four
-  `/tof/<face>/rows` clouds, points 0.02-0.20 m above the floor.
-  - `keep_out`: the hull (±0.15 × ±0.11 m with wheels) grown by 0.15 m, as an
-    `approach` footprint, `time_before_collision` 1 s. It rolls (vx, vy, wz)
-    forward and slows the robot so it stops at the zone edge, whatever the
-    direction, and stops it if two or more points are already inside. A
-    `stop` polygon of the same size would also block driving away, so there
-    is none.
-  - `speed_cap`: an always-on `limit` (`min_points` 0), 0.30 m/s and
-    1.7 rad/s.
-  - A face whose cloud is older than 0.2 s stops the robot.
+- **safety_governor** (`rev_base_tools`) is the only writer of
+  `/mobile_base_controller/reference`, stamped. Its points are the four
+  `/tof/<face>/rows` clouds, 0.02-0.20 m above the floor, kept 3 s in `odom`:
+  up close no face sees the hull corners.
+  - Only motion that closes on a point is limited. The hull (±0.15 × ±0.11 m
+    with wheels), grown 3 cm along the motion and 1 cm across it, is swept
+    along the commanded direction; the speed is the highest that still stops
+    before the first point: `v = a (sqrt(t² + 2d/a) - t)`, braking
+    a = 1.5 m/s² after t = 0.18 s, so 0.15 m from 0.45 m/s. It creeps at
+    0.03 m/s until the clearance is used up and is zero only in that
+    direction. Moving away is never limited, and points inside the hull are
+    taken as noise, so the robot can always leave where it got in.
+  - A point within 5 cm of the hull's sides caps speed at 60 % (0.27 m/s);
+    it never stops the robot.
+  - Turning is limited the same way, by the angle the hull corners can turn
+    before a point.
+  - Caps: 0.45 m/s (the motors' 0.47 m/s no-load) and 2.5 rad/s.
+  - A face silent for 0.2 s lets motion toward it only creep; after 0.75 s
+    that motion and turning stop and everything else creeps.
+  - A mixed command is scaled as a whole, so its direction is kept.
 - `odom_eval` publishes straight to the controller, bypassing the chain: it
   is an evaluation tool for open floor.
 - The ToF driver's "trust a new close return after two frames" rule is not
@@ -293,7 +300,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Move or retune a sensor | `properties.xacro` (pose, range, rate), `tof_sim.yaml` (ToF noise, dropout), the sensor's `*.gazebo.xacro`, then `test_sensor_topics.py` |
 | Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |
 | Change which ToF rows are kept | `rev_base_tools/config/tof_rows.yaml` |
-| Change the safety chain | `config/safety.yaml`, then `test_safety_chain.py` |
+| Change the safety chain | `config/safety.yaml`, `safety_governor.py`, then `test_safety_governor.py` and `test_safety_chain.py` |
 | Change the odometry fusion | `config/ekf.yaml` or `imu_bias.py`, then `odom_eval` |
 | Change the RViz view | `rev_base_description/rviz/mobile_base_sim.rviz` |
 
