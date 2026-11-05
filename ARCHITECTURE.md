@@ -11,8 +11,8 @@ turret panning, wheel + gyro odometry, the ToF safety chain and a ToF-only bug n
 | --- | --- |
 | `rev_base_description` | `urdf/` Xacro model, `meshes/rev_d/` (installed from the repo root), `rviz/`, `display.launch.py` for the model alone, `scripts/import_rev_d_meshes.py` |
 | `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall), `worlds/failsafe_course.sdf` (long wall, U-trap, closed box) |
-| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `config/safety.yaml`, `config/bug_nav.yaml`, `scripts/generate_sim_sdf.py` |
-| `rev_base_tools` | `safety_governor`, `bug_nav`, `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
+| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `config/safety.yaml`, `config/bug_nav.yaml`, `config/turret_gaze.yaml`, `scripts/generate_sim_sdf.py` |
+| `rev_base_tools` | `safety_governor`, `turret_gaze`, `bug_nav`, `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
 
 ## Runtime data flow
 
@@ -33,7 +33,7 @@ mecanum_drive_controller --> four wheel velocities --> gz_ros2_control --> Gazeb
                                                               +--> /odometry/filtered
                                                               +--> /tf  odom -> base_footprint
 
-/turret_controller/commands  (Float64MultiArray, pan rad)
+/cmd_vel_mux --> turret_gaze --> /turret_controller/commands  (Float64MultiArray, pan rad)
         |
         v
 JointGroupPositionController --> turret_pan_joint --> gz_ros2_control --> Gazebo
@@ -44,6 +44,7 @@ Gazebo sensors --> ros_gz_bridge
         /tof/<face>/points_raw ---> tof_sim ---> /tof/<face>/points  (noise, dropout)
         /tof/<face>/points ---> tof_rows ---> /tof/<face>/rows ---> tof_ray_markers ---> /tof/rays
         /tof_camera/points_raw ---> tof_camera_points ---> /tof_camera/points
+        /tof_camera/depth_image ---> turret_gaze ---> /tof_camera/depth_steady ---> safety_governor
         /tof_camera/depth_image ---> tof_depth_colour ---> /tof_camera/depth_colour ---> rqt_image_view
         /tof_camera/image, /tof_camera/camera_info, /clock
         /imu/data  (BNO085 stand-in, 100 Hz, no orientation)
@@ -158,6 +159,19 @@ a 45T gear platform through a 37T pinion (1.216 : 1).
   takes one angle in radians on `/turret_controller/commands`. The sim
   reaches it almost at once; the real servo turns at about 3.9 rad/s at the
   platform.
+- **Gaze.** `turret_gaze` (`config/turret_gaze.yaml`) aims the turret
+  along `/cmd_vel_mux` once the robot moves faster than 0.02 m/s, re-aiming
+  only when the travel direction is 10° off. Past the ±135° limit (the wedge
+  behind) it holds the limit on the side it is on. Stopped for 1 s it sweeps
+  ±90° at 0.4 rad/s. Its command slews at 3 rad/s, below the servo's 3.9, so
+  the sim turns like the real turret instead of jumping. `gaze:=false` hands
+  the turret back to `/turret_controller/commands`.
+- **Steady frames.** Depth frames taken while the pan turns faster than
+  0.5 rad/s (from `/joint_states`) are dropped; the rest go out on
+  `/tof_camera/depth_steady`. The real camera smears a moving scene; the
+  threshold is a guess until measured.
+- **TF rate.** `robot_state_publisher` publishes at 100 Hz, the
+  `/joint_states` rate, so the camera frame keeps up with a pan.
 - **Mesh split.** The pod, servo, pinion and post are fixed and in `body.stl`.
   The gear, platform, cradle and camera envelope turn, in `turret.stl`.
 
@@ -204,6 +218,7 @@ Arguments:
 | `start_controller` | `true` | spawn `mobile_base_controller` (`turret_controller` always starts) |
 | `seed` | `1` | Gazebo RNG seed; sets the IMU bias draw |
 | `imu_bias` | `true` | remove the gyro bias learnt at standstill |
+| `gaze` | `true` | `turret_gaze` aims the turret; `false` leaves it to `/turret_controller/commands` |
 | `mode` | `normal` | `tof_only`: the failsafe (below) and `bug_nav` |
 | `x`, `y`, `z`, `yaw` | `0, 0, 0.10, 0` | spawn pose |
 | `use_sim_time` | `true` | Gazebo clock for every node |
@@ -267,6 +282,10 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
   - A face silent for 0.2 s lets motion toward it only creep; after 0.75 s
     that motion and turning stop and everything else creeps.
   - A mixed command is scaled as a whole, so its direction is kept.
+  - Until a steady camera frame in the last 1 s looked within 20° of the
+    travel direction (odom yaw of `tof_camera_link`), speed is capped at
+    0.15 m/s. Straight back is beyond the turret's reach, so it stays at
+    0.15 m/s. Off in `tof_only` mode, which does not trust the camera.
 - `odom_eval` publishes straight to the controller, bypassing the chain: it
   is an evaluation tool for open floor.
 
@@ -327,6 +346,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Change robot geometry | `properties.xacro`, then `test_mecanum_wheels.py` and the controller kinematics |
 | New CAD export | `import_rev_d_meshes.py <Rev_D_T4M_ardu> meshes/rev_d`, then check `properties.xacro` against the READMEs |
 | Change the turret | `properties.xacro` (`turret_*`), `turret.xacro`, `turret_controller` in `controllers.yaml` |
+| Change how the turret looks | `config/turret_gaze.yaml`, `turret_gaze.py`, the look cap in `safety_governor.py`, then `test_turret_gaze.py` and `test_safety_chain.py` |
 | Change wheel contact | `generate_sim_sdf.py`, then `test_mecanum_wheel_contact.py` |
 | Move or retune a sensor | `properties.xacro` (pose, range, rate), `tof_sim.yaml` (ToF noise, dropout), the sensor's `*.gazebo.xacro`, then `test_sensor_topics.py` |
 | Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |

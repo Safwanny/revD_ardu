@@ -19,7 +19,9 @@ Drive Rev D at the walls through the safety chain and check it stops short.
 navigation_basic, spawned at (SPAWN) facing +X, in the open corner between
 the interior wall and the north-east walls. Teleop commands go in on
 /cmd_vel_teleop above the speed cap; Gazebo's true pose (tests may read it)
-measures the gap between the hull and the walls. In order: the e-stop lock
+measures the gap between the hull and the walls. The camera gate (turret
+gaze) runs: the side cap is only reached once the turret has turned to
+look along the wall, and straight back stays capped. In order: the e-stop lock
 holds the robot, it drives forward to the east wall, slides along it
 (slowed, never stopped, by the wall beside it) into the north-east corner,
 escapes the corner both ways, drives diagonally back into the corner and
@@ -49,6 +51,7 @@ COMMAND = 0.6               # above the 0.45 m/s cap (config/safety.yaml)
 SPEED_CAP = 0.45
 SIDE_CAP = 0.6 * SPEED_CAP  # a wall within 5 cm of the side
 MIN_GAP = 0.03
+UNLOOKED_CAP = 0.15         # straight back: past the turret's reach
 
 
 def generate_test_description():
@@ -178,13 +181,16 @@ class TestSafetyChain(unittest.TestCase):
         self.assertLessEqual(top, SIDE_CAP + 0.02, 'along: side cap unused')
         self.stopped_at_wall('along the wall', self.gaps()[1], closest)
 
-        # In the corner, each way out moves.
+        # In the corner, each way out moves. Straight back the camera
+        # cannot look, so it stays at the unlooked cap.
         for name, vx, vy, wall in (('out of the corner -y', 0.0, -COMMAND, 1),
                                    ('out of the corner -x', -COMMAND, 0.0, 0)):
             before = self.gaps()[wall]
-            self.drive(vx, vy, 1.5)
-            print(f'{name}: gained {self.gaps()[wall] - before:.3f} m')
+            top, _ = self.drive(vx, vy, 1.5)
+            print(f'{name}: gained {self.gaps()[wall] - before:.3f} m, '
+                  f'top speed {top:.3f} m/s')
             self.assertGreater(self.gaps()[wall] - before, 0.15, name)
+        self.assertLessEqual(top, UNLOOKED_CAP + 0.02, 'back: camera gate')
 
         diagonal = COMMAND / math.sqrt(2.0)
         _, closest = self.drive(diagonal, diagonal, 60.0, until_stopped=True)

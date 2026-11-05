@@ -63,3 +63,11 @@ safety_governor:
     # stale_after: that motion and turning stop, the rest creeps.
     slow_after: 0.2
     stale_after: 0.75
+    # Capped at unlooked_speed until a steady camera frame (turret_gaze) in
+    # the last look_memory s looked within look_tolerance (20 deg, inside
+    # the 31.4 deg half field) of the travel direction. Off in tof_only
+    # mode. Straight back is past the turret limit, so it stays capped.
+    camera_frame: tof_camera_link
+    unlooked_speed: 0.15
+    look_tolerance: 0.35
+    look_memory: 1.0

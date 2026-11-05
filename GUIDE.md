@@ -101,7 +101,9 @@ The safety chain caps speed at 0.45 m/s and slows only motion that closes on
 something the ToF ring sees, so the robot stops 3 cm short of it; driving
 away is never limited. A wall within 5 cm of the side caps speed at
 0.27 m/s. If a ToF face goes quiet, motion toward it creeps after 0.2 s and
-stops after 0.75 s. E-stop and release:
+stops after 0.75 s. The turret turns to look where the robot is going;
+until it has, speed is capped at 0.15 m/s, and straight back (beyond the
+turret's reach) always is. E-stop and release:
 
 ```bash
 ros2 topic pub --once /e_stop std_msgs/msg/Bool "{data: true}"
@@ -162,7 +164,9 @@ score the EKF on the raw gyro.
 
 ## Pan the turret
 
-Angle in radians, positive to the left, limited to ±135° (±2.356 rad):
+The turret follows the drive direction and sweeps when stopped. To pan it by
+hand, launch with `gaze:=false`, then send an angle in radians, positive to
+the left, limited to ±135° (±2.356 rad):
 
 ```bash
 ros2 topic pub --once /turret_controller/commands \
@@ -179,6 +183,7 @@ The camera, its cloud and its depth image turn with it.
 | `/tof/<face>/rows` | the kept rows only (4, 5, 6), 3 × 8 |
 | `/tof/rays` | RViz markers: one faint ray per kept zone, hits brighter than misses |
 | `/tof_camera/depth_image` | camera depth, 32FC1 metres |
+| `/tof_camera/depth_steady` | the depth frames taken while the turret was steady |
 | `/tof_camera/depth_colour` | the same, colour-graded, bgr8 |
 | `/tof_camera/points` | camera cloud in `tof_camera_lens_link` |
 | `/mobile_base_controller/odometry` | wheel odometry |
@@ -222,8 +227,8 @@ colcon test-result --verbose
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
 | `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint |
 | `test_bug_nav.py` | launches Gazebo headless in `failsafe_course` with `mode:=tof_only` and sends four goals: behind the long wall, a staging point, out of the U-trap, inside the closed box; each must be reached within 0.2 m (or come back unreachable) without touching anything |
-| `test_safety_chain.py` | launches Gazebo headless and drives through the safety chain: forward to a wall at the speed cap and stops short, slides along it at the side cap into a corner, gets out both ways, diagonal in and out, spins in the open; the e-stop holds |
-| `rev_base_tools/test/` | bug navigator (leave rule, hand-rule axis choice), safety governor (ToF-only snapping, point memory frame, braking speed, swept path, clearance at an angle, turning, silent faces), ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
+| `test_safety_chain.py` | launches Gazebo headless and drives through the safety chain: forward to a wall at the speed cap and stops short, slides along it at the side cap into a corner, gets out both ways, diagonal in and out, spins in the open; the e-stop holds; straight back stays at the 0.15 m/s camera cap |
+| `rev_base_tools/test/` | turret gaze (aim, hysteresis, rear wedge, sweep, slew), camera look cap, bug navigator (leave rule, hand-rule axis choice), safety governor (ToF-only snapping, point memory frame, braking speed, swept path, clearance at an angle, turning, silent faces), ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
 
 `test_sensor_topics.py`, `test_safety_chain.py` and `test_bug_nav.py` each run on their own
 `ROS_DOMAIN_ID` and `GZ_PARTITION`, set in `rev_base_bringup/CMakeLists.txt`,

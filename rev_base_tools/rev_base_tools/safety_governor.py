@@ -27,7 +27,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import Image, PointCloud2
 from sensor_msgs_py import point_cloud2
 from tf2_ros import Buffer, TransformException, TransformListener
 from tf2_sensor_msgs.tf2_sensor_msgs import transform_points
@@ -109,17 +109,20 @@ def turn_angle(points, half, sign, step=math.radians(1.0)):
     return float(angles[hit.argmax(), 0] - step) if hit.any() else math.inf
 
 
-def govern(vx, vy, wz, points, ages, p):
+def govern(vx, vy, wz, points, ages, p, looked=True):
     """Return (vx, vy, wz) scaled down to what is safe; direction is kept.
 
     ``points`` N x 2 in the base frame, ``ages`` seconds since each face's
     last cloud. A face silent past ``slow_after`` lets motion toward it only
     creep; past ``stale_after`` that motion and turning are blocked and
-    everything else creeps.
+    everything else creeps. Until the camera has ``looked`` along the
+    motion, speed is capped at ``unlooked_speed``.
     """
     half = (p.half_length, p.half_width)
     speed = math.hypot(vx, vy)
     v_cap, w_cap = p.max_speed, p.max_angular
+    if not looked:
+        v_cap = p.unlooked_speed
     for face, age in ages.items():
         toward = vx * NORMALS[face][0] + vy * NORMALS[face][1] > 0.0
         if age > p.stale_after:
@@ -261,6 +264,54 @@ class ToFMemory:
         return {face: now - seen for face, seen in self.seen.items()}
 
 
+def looked_along(heading, looks, tolerance):
+    """Return True if a camera look is within ``tolerance`` of ``heading``.
+
+    ``heading`` and ``looks`` are odom-frame yaws in radians.
+    """
+    return any(abs((heading - look + math.pi) % (2.0 * math.pi) - math.pi)
+               <= tolerance for look in looks)
+
+
+class CameraLooks:
+    """Where the turret camera looked, as odom yaws, over the last seconds.
+
+    Only steady frames count (turret_gaze drops the ones smeared by a fast
+    pan), so a frame's arrival is the evidence that the floor that way was
+    seen.
+    """
+
+    def __init__(self, node, memory):
+        self.node, self.tf = node, memory.tf
+        self.p, self.memory = memory.p, memory
+        self.looks = deque()  # (seconds, odom yaw of the camera)
+        qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
+        node.create_subscription(
+            Image, '/tof_camera/depth_steady', self.on_frame, qos)
+
+    def on_frame(self, message):
+        try:
+            q = self.tf.lookup_transform(
+                self.p.odom_frame, self.p.camera_frame, Time()
+            ).transform.rotation
+        except TransformException as error:
+            self.memory.warn(error)
+            return
+        self.looks.append((self.memory.now(), math.atan2(
+            2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))))
+
+    def looked(self, pose, vx, vy):
+        """Return True if the camera looked along (vx, vy) at ``pose``."""
+        now = self.memory.now()
+        while self.looks and now - self.looks[0][0] > self.p.look_memory:
+            self.looks.popleft()
+        if not (vx or vy):
+            return True
+        return looked_along(pose[2] + math.atan2(vy, vx),
+                            [yaw for _, yaw in self.looks],
+                            self.p.look_tolerance)
+
+
 class SafetyGovernor(Node):
     """Limit /cmd_vel_mux by the ToF ring and pass it to the controller."""
 
@@ -275,12 +326,16 @@ class SafetyGovernor(Node):
             'side_gap': 0.05, 'side_factor': 0.6, 'min_height': 0.02,
             'max_height': 0.20, 'memory': 3.0, 'slow_after': 0.2,
             'stale_after': 0.75, 'tof_only': False, 'trim_angular': 0.2,
-            'spin_margin': 0.02}
+            'spin_margin': 0.02, 'use_camera': True,
+            'camera_frame': 'tof_camera_link', 'unlooked_speed': 0.15,
+            'look_tolerance': 0.35, 'look_memory': 1.0}
         for name, value in defaults.items():
             self.declare_parameter(name, value)
         self.p = SimpleNamespace(**{name: self.get_parameter(name).value
                                     for name in defaults})
         self.tof = ToFMemory(self, self.p)
+        self.camera = CameraLooks(self, self.tof) if self.p.use_camera \
+            else None
         self.output = self.create_publisher(
             TwistStamped, '/mobile_base_controller/reference', 10)
         self.create_subscription(
@@ -299,9 +354,10 @@ class SafetyGovernor(Node):
         command = (twist.linear.x, twist.linear.y, twist.angular.z)
         if self.p.tof_only:
             command = axis_only(*command, points, self.p)
+        looked = self.camera is None or self.camera.looked(pose, *command[:2])
         (out.twist.linear.x, out.twist.linear.y,
          out.twist.angular.z) = govern(*command, points, self.tof.ages(),
-                                       self.p)
+                                       self.p, looked)
         self.output.publish(out)
 
 

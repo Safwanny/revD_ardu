@@ -56,6 +56,8 @@ def generate_test_description():
             'gui': 'false',
             'rviz': 'false',
             'camera_windows': 'false',
+            # The turret test commands the pan itself.
+            'gaze': 'false',
             'use_sim_time': 'true',
             # Software 'ogre' returns wrong ranges; ogre2 needs a GPU.
             'render_engine': 'ogre2',
