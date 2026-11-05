@@ -144,6 +144,29 @@ add a PointCloud2 display on `/tof_camera/hazards` in RViz, and
 ros2 topic echo /tof_camera/hazard_distance
 ```
 
+## Drive to a goal with Nav2
+
+Nav2 runs with every simulation (not in `mode:=tof_only`; `nav:=false` turns
+it off). It needs no map: it builds its costmaps in `odom` from the ToF ring
+and the camera as it goes.
+
+```bash
+ros2 launch rev_base_bringup simulation.launch.py
+```
+
+In RViz pick **2D Goal Pose** and click a goal; the arrow sets the end
+heading. The robot first turns in place to face along its path, then drives
+nose first so the turret camera can look where it goes; it backs up only
+when nothing else gets it out, and slowly. Click the next goal whenever you like, as many as you want in one
+run. Goals more than 10 m from the start are outside the global costmap and
+rejected. Teleop overrides Nav2 and the e-stop stops it. RViz's **Nav2**
+group shows the global costmap (kept for the run), the plan and, ticked off
+by default, the local costmap. To send a goal from a terminal and follow it:
+
+```bash
+ros2 action send_goal --feedback /navigate_to_pose nav2_msgs/action/NavigateToPose "{pose: {header: {frame_id: odom}, pose: {position: {x: 3.0, y: 1.0}, orientation: {w: 1.0}}}}"
+```
+
 ## ToF-only failsafe: drive to a goal
 
 The robot reaches a goal using the four ToF sensors alone, with a bug
@@ -262,10 +285,11 @@ colcon test-result --verbose
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
 | `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint; the 3D camera map fills |
 | `test_bug_nav.py` | launches Gazebo headless in `failsafe_course` with `mode:=tof_only` and sends four goals: behind the long wall, a staging point, out of the U-trap, inside the closed box; each must be reached within 0.2 m (or come back unreachable) without touching anything |
+| `test_nav2.py` | launches Gazebo headless in `navigation_basic` and sends Nav2 three goals in one run: behind the interior wall, past the column to the far corner, back to the start; each must succeed within 0.3 m without touching anything, with under 0.1 m of commanded travel in all beyond the camera's ±135° reach |
 | `test_camera_floor.py` | launches Gazebo headless in `ledge_course`; strafes at the 25 mm box and drives at the table edge above the cap; must stop short of both, under 8 cm |
 | `test_safety_chain.py` | launches Gazebo headless and drives through the safety chain: forward to a wall at the speed cap and stops short, slides along it at the side cap into a corner, gets out both ways, diagonal in and out, spins in the open; the e-stop holds; straight back stays at the 0.15 m/s camera cap |
 | `rev_base_tools/test/` | drive-path overlay (path integration, corner tracks, projection, drawing), camera floor (floor, ledge, no return, low box, overhang, grid memory), turret gaze (aim, hysteresis, rear wedge, sweep, slew), camera look cap, bug navigator (leave rule, hand-rule axis choice), safety governor (ToF-only snapping, point memory frame, braking speed, swept path, clearance at an angle, turning, silent faces), ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
 
-`test_sensor_topics.py`, `test_safety_chain.py`, `test_camera_floor.py` and `test_bug_nav.py` each run on their own
+`test_sensor_topics.py`, `test_safety_chain.py`, `test_camera_floor.py`, `test_bug_nav.py` and `test_nav2.py` each run on their own
 `ROS_DOMAIN_ID` and `GZ_PARTITION`, set in `rev_base_bringup/CMakeLists.txt`,
 and need a GPU for `ogre2`. CI excludes them.
