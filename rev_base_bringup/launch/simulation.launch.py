@@ -225,6 +225,8 @@ def generate_launch_description():
         [bringup_share, 'config', 'turret_gaze.yaml'])
     camera_floor_config = PathJoinSubstitution(
         [bringup_share, 'config', 'camera_floor.yaml'])
+    camera_map_config = PathJoinSubstitution(
+        [bringup_share, 'config', 'camera_map.yaml'])
     tof_only = PythonExpression(
         ["'", LaunchConfiguration('mode'), "' == 'tof_only'"])
     tof_rows_config = PathJoinSubstitution(
@@ -408,13 +410,15 @@ def generate_launch_description():
             output='screen',
             condition=IfCondition(tof_only),
         ),
-        # Aims the camera along the command; passes on steady depth frames.
+        # Aims the camera along the command (unless gaze:=false); passes on
+        # steady depth frames either way.
         Node(
             package='rev_base_tools',
             executable='turret_gaze',
-            parameters=[turret_gaze_config, sim_time],
+            parameters=[turret_gaze_config, sim_time, {
+                'aim': ParameterValue(LaunchConfiguration('gaze'),
+                                      value_type=bool)}],
             output='screen',
-            condition=IfCondition(LaunchConfiguration('gaze')),
         ),
         # Drops and low obstacles from the steady depth frames, for the
         # governor: /tof_camera/depth_steady -> /tof_camera/hazards.
@@ -423,6 +427,32 @@ def generate_launch_description():
             executable='camera_floor',
             parameters=[camera_floor_config, sim_time],
             output='screen',
+        ),
+    ]
+    # Run-long 3D map from the steady depth frames (config/camera_map.yaml).
+    camera_map = [
+        Node(
+            package='depth_image_proc',
+            executable='point_cloud_xyz_node',
+            name='camera_map_points',
+            parameters=[sim_time],
+            # image_transport takes the info from beside the image:
+            # /tof_camera/map/camera_info.
+            remappings=[
+                ('image_rect', '/tof_camera/map/depth'),
+                ('points', '/tof_camera/map_points'),
+            ],
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('camera_map')),
+        ),
+        Node(
+            package='octomap_server',
+            executable='octomap_server_node',
+            name='octomap_server',
+            parameters=[camera_map_config, sim_time],
+            remappings=[('cloud_in', '/tof_camera/map_points')],
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('camera_map')),
         ),
     ]
     rviz = Node(
@@ -533,6 +563,13 @@ def generate_launch_description():
                     'Aim the turret along the command; false leaves it to '
                     '/turret_controller/commands.'),
             ),
+            DeclareLaunchArgument(
+                'camera_map',
+                default_value='true',
+                description=(
+                    'Build the run-long 3D map (octomap) from the steady '
+                    'depth frames.'),
+            ),
             DeclareLaunchArgument('x', default_value='0.0'),
             DeclareLaunchArgument('y', default_value='0.0'),
             DeclareLaunchArgument('z', default_value='0.10'),
@@ -555,6 +592,7 @@ def generate_launch_description():
             imu_bias,
             ekf,
             *safety_chain,
+            *camera_map,
             RegisterEventHandler(
                 OnProcessExit(
                     target_action=generate_sdf,

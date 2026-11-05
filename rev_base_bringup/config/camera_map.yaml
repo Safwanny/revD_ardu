@@ -1,0 +1,21 @@
+# The run-long 3D camera map: steady depth frames (turret_gaze, at map_rate)
+#   /tof_camera/map/depth -> point_cloud_xyz -> /tof_camera/map_points
+#   -> octomap_server (odom) -> /octomap_point_cloud_centers, /projected_map
+# Kept until the launch stops; no SLAM, so it drifts with odom (~2 % of
+# distance, M1).
+octomap_server:
+  ros__parameters:
+    frame_id: odom
+    base_frame_id: base_footprint
+    # 5 cm voxels: a 20 x 20 m run at wall height stays well under 1 M.
+    resolution: 0.05
+    # Far mode reaches 4 m; past 3 m the 0.5 deg braking pitch is 2.6 cm.
+    sensor_model:
+      max_range: 3.0
+    # Outputs (voxel cloud, projected map) leave out the floor; it is still
+    # inserted, so rays clear free space down to it.
+    occupancy_min_z: 0.02
+    occupancy_max_z: 2.0
+    # Publish only to subscribers. Latched, it serialises the whole tree to
+    # /octomap_binary and /octomap_full every update even with nobody on them.
+    latch: false

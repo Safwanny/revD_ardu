@@ -197,6 +197,28 @@ Visualization Manager:
       Value: false
     Enabled: true
     Name: ToF camera
+  - Alpha: 0.6
+    Autocompute Intensity Bounds: true
+    Class: rviz_default_plugins/PointCloud2
+    Color: 255; 255; 255
+    Color Transformer: AxisColor
+    Axis: Z
+    Decay Time: 0
+    Enabled: true
+    Name: 3D map (octomap)
+    Position Transformer: XYZ
+    Selectable: true
+    Size (Pixels): 3
+    Size (m): 0.05
+    Style: Boxes
+    Topic:
+      Depth: 1
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Best Effort
+      Value: /octomap_point_cloud_centers
+    Use Fixed Frame: true
+    Value: true
   Enabled: true
   Global Options:
     Background Color: 36; 38; 42

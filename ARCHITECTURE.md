@@ -11,7 +11,7 @@ turret panning, wheel + gyro odometry, the ToF safety chain and a ToF-only bug n
 | --- | --- |
 | `rev_base_description` | `urdf/` Xacro model, `meshes/rev_d/` (installed from the repo root), `rviz/`, `display.launch.py` for the model alone, `scripts/import_rev_d_meshes.py` |
 | `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall), `worlds/failsafe_course.sdf` (long wall, U-trap, closed box), `worlds/ledge_course.sdf` (0.2 m table with open edges and a 25 mm box) |
-| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `config/safety.yaml`, `config/bug_nav.yaml`, `config/turret_gaze.yaml`, `config/camera_floor.yaml`, `scripts/generate_sim_sdf.py` |
+| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `config/safety.yaml`, `config/bug_nav.yaml`, `config/turret_gaze.yaml`, `config/camera_floor.yaml`, `config/camera_map.yaml`, `scripts/generate_sim_sdf.py` |
 | `rev_base_tools` | `safety_governor`, `turret_gaze`, `camera_floor`, `bug_nav`, `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
 
 ## Runtime data flow
@@ -47,6 +47,8 @@ Gazebo sensors --> ros_gz_bridge
         /tof_camera/depth_image ---> turret_gaze ---> /tof_camera/depth_steady ---> camera_floor
                 camera_floor ---> /tof_camera/hazards (odom grid) ---> safety_governor
                 camera_floor ---> /tof_camera/hazard_distance
+        turret_gaze ---> /tof_camera/map/depth (3 Hz) ---> point_cloud_xyz ---> /tof_camera/map_points
+                ---> octomap_server ---> /octomap_point_cloud_centers, /projected_map
         /tof_camera/depth_image + /mobile_base_controller/reference ---> tof_depth_colour ---> /tof_camera/depth_colour ---> rqt_image_view
         /tof_camera/image, /tof_camera/camera_info, /clock
         /imu/data  (BNO085 stand-in, 100 Hz, no orientation)
@@ -166,8 +168,9 @@ a 45T gear platform through a 37T pinion (1.216 : 1).
   only when the travel direction is 10° off. Past the ±135° limit (the wedge
   behind) it holds the limit on the side it is on. Stopped for 1 s it sweeps
   ±90° at 0.4 rad/s. Its command slews at 3 rad/s, below the servo's 3.9, so
-  the sim turns like the real turret instead of jumping. `gaze:=false` hands
-  the turret back to `/turret_controller/commands`.
+  the sim turns like the real turret instead of jumping. `gaze:=false` stops
+  only the aiming and hands the turret to `/turret_controller/commands`;
+  the frame gating below keeps running.
 - **Steady frames.** Depth frames taken while the pan turns faster than
   0.5 rad/s (from `/joint_states`) are dropped; the rest go out on
   `/tof_camera/depth_steady`. The real camera smears a moving scene; the
@@ -205,6 +208,27 @@ the track of each corner on the floor (`base_footprint` z = 0), projected
 through TF and the camera intrinsics, so it stays on the floor as the turret
 pans. Points closer than 5 cm in front of the lens are not drawn. The floor
 is only in view from about 0.3 m out, so a tight arc mostly leaves the view.
+
+### 3D camera map
+
+A map of what the camera saw, kept for the whole run (until the launch is
+restarted), for RViz and later Nav2 (`config/camera_map.yaml`):
+
+- **Input.** `turret_gaze` passes at most 3 steady frames a second to
+  `/tof_camera/map/depth`, each with its `camera_info` beside it (image
+  transport pairs them by stamp). `depth_image_proc`'s `point_cloud_xyz`
+  turns them into `/tof_camera/map_points`.
+- **Map.** `octomap_server` in `odom`, 5 cm voxels, rays out to 3 m. Each
+  ray clears the space it passes through, so something that moved goes; a
+  place seen earlier stays when the robot leaves and is updated when it
+  comes back.
+- **Output.** Occupied voxels from 2 cm to 2 m up on
+  `/octomap_point_cloud_centers` (RViz "3D map"), and their 2D projection on
+  `/projected_map`. The floor is inserted but left out of both. Drops are not
+  in it: they are `/tof_camera/hazards`. Published to subscribers only.
+- **Drift.** No SLAM: the map is as good as `odom`, about 2 % of distance.
+  Wheels spinning against a wall send it off too.
+- **Load.** About a quarter of one core for `octomap_server` at 3 Hz.
 
 ### Camera floor classifier
 
@@ -257,7 +281,8 @@ Arguments:
 | `start_controller` | `true` | spawn `mobile_base_controller` (`turret_controller` always starts) |
 | `seed` | `1` | Gazebo RNG seed; sets the IMU bias draw |
 | `imu_bias` | `true` | remove the gyro bias learnt at standstill |
-| `gaze` | `true` | `turret_gaze` aims the turret; `false` leaves it to `/turret_controller/commands` |
+| `gaze` | `true` | `turret_gaze` aims the turret; `false` leaves it to `/turret_controller/commands` (frames are still gated) |
+| `camera_map` | `true` | build the run-long 3D map |
 | `mode` | `normal` | `tof_only`: the failsafe (below) and `bug_nav` |
 | `x`, `y`, `z`, `yaw` | `0, 0, 0.10, 0` | spawn pose |
 | `use_sim_time` | `true` | Gazebo clock for every node |
@@ -302,7 +327,9 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
   (`std_msgs/Bool`, priority 255) blocks both while true. It is latched, with
   no heartbeat yet.
 - **safety_governor** (`rev_base_tools`) is the only writer of
-  `/mobile_base_controller/reference`, stamped. Its points are the four
+  `/mobile_base_controller/reference`, stamped with its own clock: the
+  controller times a command out by its stamp, so a sender on another clock
+  (wall against sim time) would keep its last command running. Its points are the four
   `/tof/<face>/rows` clouds, 0.02-0.20 m above the floor, kept 3 s in `odom`:
   up close no face sees the hull corners.
   - Only motion that closes on a point is limited. The hull (±0.15 × ±0.11 m
@@ -393,6 +420,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |
 | Change which ToF rows are kept | `rev_base_tools/config/tof_rows.yaml` |
 | Change the safety chain | `config/safety.yaml`, `safety_governor.py`, then `test_safety_governor.py` and `test_safety_chain.py` |
+| Change the 3D camera map | `config/camera_map.yaml`, `map_rate` in `config/turret_gaze.yaml`, then `test_sensor_topics.py` |
 | Change the camera floor classifier | `config/camera_floor.yaml`, `camera_floor.py`, then `test_camera_floor.py` (both) |
 | Change the ToF-only failsafe | `config/bug_nav.yaml`, `bug_nav.py`, `axis_only` in `safety_governor.py`, then `test_bug_nav.py` (both) |
 | Change the odometry fusion | `config/ekf.yaml` or `imu_bias.py`, then `odom_eval` |
