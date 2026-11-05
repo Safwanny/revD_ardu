@@ -221,6 +221,8 @@ def generate_launch_description():
         [bringup_share, 'config', 'safety.yaml'])
     bug_nav_config = PathJoinSubstitution(
         [bringup_share, 'config', 'bug_nav.yaml'])
+    turret_gaze_config = PathJoinSubstitution(
+        [bringup_share, 'config', 'turret_gaze.yaml'])
     tof_only = PythonExpression(
         ["'", LaunchConfiguration('mode'), "' == 'tof_only'"])
     tof_rows_config = PathJoinSubstitution(
@@ -277,6 +279,9 @@ def generate_launch_description():
             {
                 'robot_description': robot_description,
                 'use_sim_time': LaunchConfiguration('use_sim_time'),
+                # The turret camera's TF at the joint_states rate
+                # (controller_manager update_rate), not the default 20 Hz.
+                'publish_frequency': 100.0,
             }
         ],
         remappings=[
@@ -387,7 +392,10 @@ def generate_launch_description():
             package='rev_base_tools',
             executable='safety_governor',
             parameters=[safety_config, sim_time, {
-                'tof_only': ParameterValue(tof_only, value_type=bool)}],
+                'tof_only': ParameterValue(tof_only, value_type=bool),
+                # The ToF-only failsafe does not trust the camera.
+                'use_camera': ParameterValue(PythonExpression(
+                    ['not ', tof_only]), value_type=bool)}],
             output='screen',
         ),
         # ToF-only failsafe: DistBug to a goal clicked in RViz.
@@ -397,6 +405,14 @@ def generate_launch_description():
             parameters=[bug_nav_config, sim_time],
             output='screen',
             condition=IfCondition(tof_only),
+        ),
+        # Aims the camera along the command; passes on steady depth frames.
+        Node(
+            package='rev_base_tools',
+            executable='turret_gaze',
+            parameters=[turret_gaze_config, sim_time],
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('gaze')),
         ),
     ]
     rviz = Node(
@@ -499,6 +515,13 @@ def generate_launch_description():
                     "'tof_only': the failsafe for when only the ToF ring "
                     'works: motion along the sensing axes, spins only when '
                     'clear, and bug_nav drives to RViz goals.'),
+            ),
+            DeclareLaunchArgument(
+                'gaze',
+                default_value='true',
+                description=(
+                    'Aim the turret along the command; false leaves it to '
+                    '/turret_controller/commands.'),
             ),
             DeclareLaunchArgument('x', default_value='0.0'),
             DeclareLaunchArgument('y', default_value='0.0'),

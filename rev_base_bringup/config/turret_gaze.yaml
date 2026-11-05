@@ -1,0 +1,23 @@
+# rev_base_tools turret_gaze: aims the turret camera along /cmd_vel_mux,
+# sweeps when stopped, passes on only depth frames taken while it is steady.
+turret_gaze:
+  ros__parameters:
+    # turret_limit in properties.xacro (+-135 deg).
+    limit: 2.3562
+    rate: 50.0
+    # Slower than this (m/s) counts as stopped.
+    deadband: 0.02
+    # Re-aim only once the travel direction is this far (rad, 10 deg) off.
+    hysteresis: 0.1745
+    command_timeout: 0.5
+    # STS3215 through the 37:45 gearing: 3.9 rad/s at the platform
+    # (properties.xacro turret_max_velocity); slew a little below it.
+    pan_speed: 3.0
+    # Stopped this long (s): sweep +-sweep_angle at sweep_speed (rad/s).
+    sweep_after: 1.0
+    sweep_angle: 1.5708
+    sweep_speed: 0.4
+    # Frames taken while the pan turns faster (rad/s) are dropped: the real
+    # ToF camera smears depth across a moving scene. The sweep stays under
+    # it. A guess: measure the smear on the B0410.
+    steady_rate: 0.5

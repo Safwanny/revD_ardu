@@ -4,14 +4,15 @@ from types import SimpleNamespace
 
 import numpy as np
 from rev_base_tools.safety_governor import (
-    axis_only, beside, govern, path_distance, spin_clear, stopping_speed,
-    ToFMemory, turn_angle)
+    axis_only, beside, govern, looked_along, path_distance, spin_clear,
+    stopping_speed, ToFMemory, turn_angle)
 
 P = SimpleNamespace(
     half_length=0.15, half_width=0.11, max_speed=0.45, max_angular=2.5,
     brake_decel=1.5, latency=0.18, min_gap=0.03, side_min_gap=0.01,
     creep_speed=0.03,
-    side_gap=0.05, side_factor=0.6, slow_after=0.2, stale_after=0.75)
+    side_gap=0.05, side_factor=0.6, slow_after=0.2, stale_after=0.75,
+    unlooked_speed=0.15)
 HALF = (0.15, 0.11)
 FRESH = {face: 0.0 for face in ('front', 'rear', 'left', 'right')}
 WALL_AHEAD = np.array([[0.40, y] for y in np.linspace(-0.3, 0.3, 13)])
@@ -120,3 +121,19 @@ def test_memory_points_in_base_frame():
     # Base at (1, 1) facing +y: the point is 1 m to its right.
     points = memory.points((1.0, 1.0, math.pi / 2))
     assert np.allclose(points, [[0.0, -1.0]])
+
+
+def test_unlooked_motion_is_capped():
+    empty = np.empty((0, 2))
+    assert govern(0.6, 0.0, 0.0, empty, FRESH, P, looked=False)[0] == 0.15
+    # Moving away from a wall it is pressed on stays possible, still capped.
+    pressed = np.array([[0.16, 0.0]])
+    assert govern(-0.6, 0.0, 0.0, pressed, FRESH, P, looked=False)[0] == -0.15
+    # Turning is not a travel direction.
+    assert govern(0.0, 0.0, 1.0, empty, FRESH, P, looked=False)[2] == 1.0
+
+
+def test_looked_along_wraps():
+    assert looked_along(math.pi - 0.1, [-math.pi + 0.1], 0.35)
+    assert not looked_along(0.0, [1.0], 0.35)
+    assert not looked_along(0.0, [], 0.35)
