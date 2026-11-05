@@ -113,6 +113,22 @@ ros2 topic pub --once /e_stop std_msgs/msg/Bool "{data: false}"
 Compare `/cmd_vel_mux` with `/mobile_base_controller/reference` to see what
 the governor changed.
 
+## Ledges and low obstacles
+
+The camera stops the robot at a table edge and at a box too low for the ToF
+ring. A 0.2 m table with open edges and a 25 mm box:
+
+```bash
+ros2 launch rev_base_bringup simulation.launch.py world:=ledge_course x:=-1.0 z:=0.3
+```
+
+Drive at the edge or the box (teleop above). What the camera has marked:
+add a PointCloud2 display on `/tof_camera/hazards` in RViz, and
+
+```bash
+ros2 topic echo /tof_camera/hazard_distance
+```
+
 ## ToF-only failsafe: drive to a goal
 
 The robot reaches a goal using the four ToF sensors alone, with a bug
@@ -184,6 +200,8 @@ The camera, its cloud and its depth image turn with it.
 | `/tof/rays` | RViz markers: one faint ray per kept zone, hits brighter than misses |
 | `/tof_camera/depth_image` | camera depth, 32FC1 metres |
 | `/tof_camera/depth_steady` | the depth frames taken while the turret was steady |
+| `/tof_camera/hazards` | drops and low obstacles the camera found, a 2 cm grid in `odom` |
+| `/tof_camera/hazard_distance` | lens to the nearest hazard along the look direction, metres |
 | `/tof_camera/depth_colour` | the same, colour-graded, bgr8 |
 | `/tof_camera/points` | camera cloud in `tof_camera_lens_link` |
 | `/mobile_base_controller/odometry` | wheel odometry |
@@ -227,9 +245,10 @@ colcon test-result --verbose
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
 | `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint |
 | `test_bug_nav.py` | launches Gazebo headless in `failsafe_course` with `mode:=tof_only` and sends four goals: behind the long wall, a staging point, out of the U-trap, inside the closed box; each must be reached within 0.2 m (or come back unreachable) without touching anything |
+| `test_camera_floor.py` | launches Gazebo headless in `ledge_course`; strafes at the 25 mm box and drives at the table edge above the cap; must stop short of both, under 8 cm |
 | `test_safety_chain.py` | launches Gazebo headless and drives through the safety chain: forward to a wall at the speed cap and stops short, slides along it at the side cap into a corner, gets out both ways, diagonal in and out, spins in the open; the e-stop holds; straight back stays at the 0.15 m/s camera cap |
-| `rev_base_tools/test/` | turret gaze (aim, hysteresis, rear wedge, sweep, slew), camera look cap, bug navigator (leave rule, hand-rule axis choice), safety governor (ToF-only snapping, point memory frame, braking speed, swept path, clearance at an angle, turning, silent faces), ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
+| `rev_base_tools/test/` | camera floor (floor, ledge, no return, low box, overhang, grid memory), turret gaze (aim, hysteresis, rear wedge, sweep, slew), camera look cap, bug navigator (leave rule, hand-rule axis choice), safety governor (ToF-only snapping, point memory frame, braking speed, swept path, clearance at an angle, turning, silent faces), ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
 
-`test_sensor_topics.py`, `test_safety_chain.py` and `test_bug_nav.py` each run on their own
+`test_sensor_topics.py`, `test_safety_chain.py`, `test_camera_floor.py` and `test_bug_nav.py` each run on their own
 `ROS_DOMAIN_ID` and `GZ_PARTITION`, set in `rev_base_bringup/CMakeLists.txt`,
 and need a GPU for `ogre2`. CI excludes them.

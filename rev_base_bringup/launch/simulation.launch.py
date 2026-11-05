@@ -223,6 +223,8 @@ def generate_launch_description():
         [bringup_share, 'config', 'bug_nav.yaml'])
     turret_gaze_config = PathJoinSubstitution(
         [bringup_share, 'config', 'turret_gaze.yaml'])
+    camera_floor_config = PathJoinSubstitution(
+        [bringup_share, 'config', 'camera_floor.yaml'])
     tof_only = PythonExpression(
         ["'", LaunchConfiguration('mode'), "' == 'tof_only'"])
     tof_rows_config = PathJoinSubstitution(
@@ -413,6 +415,14 @@ def generate_launch_description():
             parameters=[turret_gaze_config, sim_time],
             output='screen',
             condition=IfCondition(LaunchConfiguration('gaze')),
+        ),
+        # Drops and low obstacles from the steady depth frames, for the
+        # governor: /tof_camera/depth_steady -> /tof_camera/hazards.
+        Node(
+            package='rev_base_tools',
+            executable='camera_floor',
+            parameters=[camera_floor_config, sim_time],
+            output='screen',
         ),
     ]
     rviz = Node(

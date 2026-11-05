@@ -4,7 +4,8 @@
 Sits between twist_mux and the controller: /cmd_vel_mux ->
 /mobile_base_controller/reference. The points it reacts to are the ToF rows
 of all four faces, kept for a few seconds in the odom frame, because near the
-hull corners no face sees anything (each face covers only +-30 deg).
+hull corners no face sees anything (each face covers only +-30 deg), and the
+turret camera's drops and low obstacles (camera_floor).
 
 Only motion that closes on a point is limited, and only by what lies along
 that motion: the hull, grown by ``min_gap`` along the motion and by
@@ -27,7 +28,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
 from tf2_ros import Buffer, TransformException, TransformListener
 from tf2_sensor_msgs.tf2_sensor_msgs import transform_points
@@ -186,6 +187,13 @@ def axis_only(vx, vy, wz, points, p):
     return vx, vy, wz
 
 
+def to_base(odom, pose):
+    """Return N x 2 odom points in the base frame at ``pose`` (x, y, yaw)."""
+    x, y, yaw = pose
+    c, s = math.cos(yaw), math.sin(yaw)
+    return (odom - (x, y)) @ np.array([[c, -s], [s, c]])
+
+
 class ToFMemory:
     """The ToF rows of all faces, kept ``memory`` seconds in odom.
 
@@ -254,10 +262,7 @@ class ToFMemory:
             self.memory.popleft()
         if not self.memory:
             return np.empty((0, 2))
-        x, y, yaw = pose
-        c, s = math.cos(yaw), math.sin(yaw)
-        odom = np.concatenate([xy for _, xy in self.memory]) - (x, y)
-        return odom @ np.array([[c, -s], [s, c]])
+        return to_base(np.concatenate([xy for _, xy in self.memory]), pose)
 
     def ages(self):
         now = self.now()
@@ -273,23 +278,30 @@ def looked_along(heading, looks, tolerance):
                <= tolerance for look in looks)
 
 
-class CameraLooks:
-    """Where the turret camera looked, as odom yaws, over the last seconds.
+class CameraHazards:
+    """The camera's drops and low obstacles, and where it looked.
 
-    Only steady frames count (turret_gaze drops the ones smeared by a fast
-    pan), so a frame's arrival is the evidence that the floor that way was
-    seen.
+    camera_floor publishes its whole odom hazard grid once per steady frame
+    (turret_gaze drops the ones smeared by a fast pan), so each cloud
+    replaces the last, and its arrival is the evidence that the floor that
+    way was seen. Looks are odom yaws over the last ``look_memory`` s.
     """
 
     def __init__(self, node, memory):
         self.node, self.tf = node, memory.tf
         self.p, self.memory = memory.p, memory
         self.looks = deque()  # (seconds, odom yaw of the camera)
-        qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
+        self.hazards = np.empty((0, 2))  # odom
         node.create_subscription(
-            Image, '/tof_camera/depth_steady', self.on_frame, qos)
+            PointCloud2, '/tof_camera/hazards', self.on_frame, 5)
+
+    def points(self, pose):
+        """Return the hazards as N x 2 in the base frame at ``pose``."""
+        return to_base(self.hazards, pose)
 
     def on_frame(self, message):
+        self.hazards = point_cloud2.read_points_numpy(
+            message, field_names=('x', 'y'), skip_nans=True).reshape(-1, 2)
         try:
             q = self.tf.lookup_transform(
                 self.p.odom_frame, self.p.camera_frame, Time()
@@ -334,7 +346,7 @@ class SafetyGovernor(Node):
         self.p = SimpleNamespace(**{name: self.get_parameter(name).value
                                     for name in defaults})
         self.tof = ToFMemory(self, self.p)
-        self.camera = CameraLooks(self, self.tof) if self.p.use_camera \
+        self.camera = CameraHazards(self, self.tof) if self.p.use_camera \
             else None
         self.output = self.create_publisher(
             TwistStamped, '/mobile_base_controller/reference', 10)
@@ -350,6 +362,8 @@ class SafetyGovernor(Node):
             self.output.publish(out)
             return
         points = self.tof.points(pose)
+        if self.camera is not None:
+            points = np.concatenate([points, self.camera.points(pose)])
         twist = message.twist
         command = (twist.linear.x, twist.linear.y, twist.angular.z)
         if self.p.tof_only:

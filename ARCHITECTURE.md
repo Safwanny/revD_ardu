@@ -10,9 +10,9 @@ turret panning, wheel + gyro odometry, the ToF safety chain and a ToF-only bug n
 | Package | Responsibility |
 | --- | --- |
 | `rev_base_description` | `urdf/` Xacro model, `meshes/rev_d/` (installed from the repo root), `rviz/`, `display.launch.py` for the model alone, `scripts/import_rev_d_meshes.py` |
-| `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall), `worlds/failsafe_course.sdf` (long wall, U-trap, closed box) |
-| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `config/safety.yaml`, `config/bug_nav.yaml`, `config/turret_gaze.yaml`, `scripts/generate_sim_sdf.py` |
-| `rev_base_tools` | `safety_governor`, `turret_gaze`, `bug_nav`, `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
+| `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall), `worlds/failsafe_course.sdf` (long wall, U-trap, closed box), `worlds/ledge_course.sdf` (0.2 m table with open edges and a 25 mm box) |
+| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `config/safety.yaml`, `config/bug_nav.yaml`, `config/turret_gaze.yaml`, `config/camera_floor.yaml`, `scripts/generate_sim_sdf.py` |
+| `rev_base_tools` | `safety_governor`, `turret_gaze`, `camera_floor`, `bug_nav`, `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
 
 ## Runtime data flow
 
@@ -44,7 +44,9 @@ Gazebo sensors --> ros_gz_bridge
         /tof/<face>/points_raw ---> tof_sim ---> /tof/<face>/points  (noise, dropout)
         /tof/<face>/points ---> tof_rows ---> /tof/<face>/rows ---> tof_ray_markers ---> /tof/rays
         /tof_camera/points_raw ---> tof_camera_points ---> /tof_camera/points
-        /tof_camera/depth_image ---> turret_gaze ---> /tof_camera/depth_steady ---> safety_governor
+        /tof_camera/depth_image ---> turret_gaze ---> /tof_camera/depth_steady ---> camera_floor
+                camera_floor ---> /tof_camera/hazards (odom grid) ---> safety_governor
+                camera_floor ---> /tof_camera/hazard_distance
         /tof_camera/depth_image ---> tof_depth_colour ---> /tof_camera/depth_colour ---> rqt_image_view
         /tof_camera/image, /tof_camera/camera_info, /clock
         /imu/data  (BNO085 stand-in, 100 Hz, no orientation)
@@ -188,9 +190,35 @@ from the pan joint, about 102 mm off the ground.
   frame, so `tof_camera_points` restamps it into `tof_camera_lens_link`.
 - **Estimated dimensions.** The camera envelope, lens depth and lens position
   are estimates, in the CAD as well as here. Measuring the B0410 replaces them.
+- **Range mode.** Far mode, 0.2-4 m; near mode wraps at 2 m.
 - **Real driver.** Arducam's own ROS 2 node publishes no `Image` or
   `CameraInfo`, and hard-codes the frame `map`. The real camera will need a
   node of our own.
+
+### Camera floor classifier
+
+`camera_floor` (`config/camera_floor.yaml`, ADR 0004) turns each steady depth
+frame into drops and low obstacles:
+
+- **Expected floor.** The camera only pans, so each pixel's ray meets the
+  floor at a fixed distance. Through TF (`odom` z is height above the floor)
+  each pixel is sorted by its height above that floor:
+  - floor within ±2 cm
+  - a drop deeper than 3 cm below, or no return where the floor should be
+  - an obstacle 2-15 cm up
+  - anything higher an overhang the hull passes under
+  Out to 2 m only: a 0.5° pitch while braking is 1.7 cm of height there.
+- **Memory.** Hazards go on a 2 cm `odom` grid: a drop at the floor point
+  that is missing (not on the lower floor), an obstacle where it was
+  measured. A square stays until the camera sees floor there again, so a
+  ledge closer than the camera's 0.3 m floor blind zone is still known.
+  Squares more than 3 m away are dropped.
+- **Output.** The whole grid on `/tof_camera/hazards` (`odom`, one point per
+  square) per frame; the lens-to-nearest-hazard distance along the look
+  direction, within the hull's width, on `/tof_camera/hazard_distance`.
+- **Why the camera.** The ToF ring (32 mm up, row 4 meeting the floor at
+  0.24 m) sees a 25 mm box only within about 9 cm, too late to brake, and
+  never sees a drop.
 
 ## Simulation launch
 
@@ -282,7 +310,9 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
   - A face silent for 0.2 s lets motion toward it only creep; after 0.75 s
     that motion and turning stop and everything else creeps.
   - A mixed command is scaled as a whole, so its direction is kept.
-  - Until a steady camera frame in the last 1 s looked within 20° of the
+  - The camera's hazard grid counts as points too, latest grid only (it is
+    its own memory); not in `tof_only` mode.
+  - Until a hazard grid from the last 1 s looked within 20° of the
     travel direction (odom yaw of `tof_camera_link`), speed is capped at
     0.15 m/s. Straight back is beyond the turret's reach, so it stays at
     0.15 m/s. Off in `tof_only` mode, which does not trust the camera.
@@ -352,6 +382,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Add a sensor | description Xacro, Gazebo Xacro, a bridge entry in `simulation.launch.py`, a check in `test_sensor_topics.py`; a new gz system goes in both worlds and `test_worlds.py` |
 | Change which ToF rows are kept | `rev_base_tools/config/tof_rows.yaml` |
 | Change the safety chain | `config/safety.yaml`, `safety_governor.py`, then `test_safety_governor.py` and `test_safety_chain.py` |
+| Change the camera floor classifier | `config/camera_floor.yaml`, `camera_floor.py`, then `test_camera_floor.py` (both) |
 | Change the ToF-only failsafe | `config/bug_nav.yaml`, `bug_nav.py`, `axis_only` in `safety_governor.py`, then `test_bug_nav.py` (both) |
 | Change the odometry fusion | `config/ekf.yaml` or `imu_bias.py`, then `odom_eval` |
 | Change the RViz view | `rev_base_description/rviz/mobile_base_sim.rviz` |

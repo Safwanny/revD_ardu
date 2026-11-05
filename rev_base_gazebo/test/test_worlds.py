@@ -31,6 +31,7 @@ REQUIRED_SYSTEMS = {
 EXPECTED_WORLDS = {
     'navigation_basic.sdf',
     'failsafe_course.sdf',
+    'ledge_course.sdf',
     'my_world.sdf',
 }
 
