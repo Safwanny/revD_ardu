@@ -10,6 +10,7 @@
 
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>controller_manager</exec_depend>
+  <exec_depend>depth_image_proc</exec_depend>
   <exec_depend>gz_sim_vendor</exec_depend>
   <exec_depend>gz_transport_vendor</exec_depend>
   <exec_depend>joint_state_broadcaster</exec_depend>
@@ -17,6 +18,7 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>mecanum_drive_controller</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>octomap_server</exec_depend>
   <exec_depend>position_controllers</exec_depend>
   <exec_depend>rev_base_description</exec_depend>
   <exec_depend>rev_base_gazebo</exec_depend>

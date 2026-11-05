@@ -17,8 +17,9 @@
 Launch Gazebo headlessly and verify the Rev D sensor topic contract.
 
 Runs in my_world. The checks are on frame ids, message shape and rates, not
-world geometry, plus one actuation check: a turret command moves the pan
-joint, and one isolation check: only evaluation reads the ground truth.
+world geometry. Also: the 3D camera map fills, one actuation check (a turret
+command moves the pan joint) and one isolation check (only evaluation reads
+the ground truth).
 """
 
 import math
@@ -237,3 +238,23 @@ class TestSensorTopics(unittest.TestCase):
         self.node.destroy_publisher(publisher)
         self.assertIsNotNone(pan, 'turret_pan_joint not on /joint_states')
         self.assertAlmostEqual(pan, target, delta=0.02)
+
+    def test_camera_map_builds(self):
+        voxels = None
+
+        def on_map(message):
+            nonlocal voxels
+            voxels = point_cloud2.read_points_numpy(
+                message, field_names=('x', 'y', 'z'))
+
+        subscription = self.node.create_subscription(
+            PointCloud2, '/octomap_point_cloud_centers', on_map, 1)
+        deadline = time.monotonic() + 90.0
+        while time.monotonic() < deadline and (
+                voxels is None or len(voxels) < 100):
+            rclpy.spin_once(self.node, timeout_sec=0.2)
+        self.node.destroy_subscription(subscription)
+        self.assertIsNotNone(voxels, 'no 3D map')
+        self.assertGreater(len(voxels), 100, 'map has almost nothing in it')
+        # The floor is left out of the output.
+        self.assertGreaterEqual(voxels[:, 2].min(), 0.0)

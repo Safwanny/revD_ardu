@@ -190,6 +190,9 @@ class TestSafetyChain(unittest.TestCase):
             print(f'{name}: gained {self.gaps()[wall] - before:.3f} m, '
                   f'top speed {top:.3f} m/s')
             self.assertGreater(self.gaps()[wall] - before, 0.15, name)
+            # The test's stamps are wall time against sim time: the reference
+            # timeout must still stop the wheels once commands stop.
+            self.assertLess(self.speed, 0.01, f'{name}: still moving')
         self.assertLessEqual(top, UNLOOKED_CAP + 0.02, 'back: camera gate')
 
         diagonal = COMMAND / math.sqrt(2.0)

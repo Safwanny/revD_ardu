@@ -21,3 +21,6 @@ turret_gaze:
     # ToF camera smears depth across a moving scene. The sweep stays under
     # it. A guess: measure the smear on the B0410.
     steady_rate: 0.5
+    # Steady frames a second for the 3D map (/tof_camera/map/depth):
+    # octomap ray-casts every pixel; 30 Hz would be ~1 M rays a second.
+    map_rate: 3.0

@@ -115,6 +115,19 @@ ros2 topic pub --once /e_stop std_msgs/msg/Bool "{data: false}"
 Compare `/cmd_vel_mux` with `/mobile_base_controller/reference` to see what
 the governor changed.
 
+## The 3D camera map
+
+Every run builds a 3D map of what the camera saw. It shows in RViz as
+**3D map (octomap)**, voxels coloured by height. It lasts until the launch
+stops; drive around and the places seen earlier stay. Save it:
+
+```bash
+ros2 run octomap_server octomap_saver_node --ros-args -p octomap_path:=$HOME/run_map.bt
+```
+
+Open a saved map with `octovis` (`sudo apt install octovis`). Launch with
+`camera_map:=false` to skip it.
+
 ## Ledges and low obstacles
 
 The camera stops the robot at a table edge and at a box too low for the ToF
@@ -183,7 +196,7 @@ score the EKF on the raw gyro.
 ## Pan the turret
 
 The turret follows the drive direction and sweeps when stopped. To pan it by
-hand, launch with `gaze:=false`, then send an angle in radians, positive to
+hand, launch with `gaze:=false` (camera frames are still used), then send an angle in radians, positive to
 the left, limited to ±135° (±2.356 rad):
 
 ```bash
@@ -202,6 +215,8 @@ The camera, its cloud and its depth image turn with it.
 | `/tof/rays` | RViz markers: one faint ray per kept zone, hits brighter than misses |
 | `/tof_camera/depth_image` | camera depth, 32FC1 metres |
 | `/tof_camera/depth_steady` | the depth frames taken while the turret was steady |
+| `/octomap_point_cloud_centers` | the 3D camera map: occupied 5 cm voxels in `odom`, floor left out |
+| `/projected_map` | the same map flattened to a 2D occupancy grid |
 | `/tof_camera/hazards` | drops and low obstacles the camera found, a 2 cm grid in `odom` |
 | `/tof_camera/hazard_distance` | lens to the nearest hazard along the look direction, metres |
 | `/tof_camera/depth_colour` | the same, colour-graded, bgr8 |
@@ -245,7 +260,7 @@ colcon test-result --verbose
 | `test_mecanum_wheels.py` | wheel positions, axes, meshes and hands against Rev D geometry; turret joint and limits |
 | `test_worlds.py` | each world parses, needs no downloads, loads the IMU system and renders with `ogre2` |
 | `test_mecanum_wheel_contact.py` | the generated SDF carries the directional wheel friction |
-| `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint |
+| `test_sensor_topics.py` | launches Gazebo headless and checks every sensor topic, the IMU rate and the odometry TF; no robot node reads `/ground_truth/odom`; a turret command moves the pan joint; the 3D camera map fills |
 | `test_bug_nav.py` | launches Gazebo headless in `failsafe_course` with `mode:=tof_only` and sends four goals: behind the long wall, a staging point, out of the U-trap, inside the closed box; each must be reached within 0.2 m (or come back unreachable) without touching anything |
 | `test_camera_floor.py` | launches Gazebo headless in `ledge_course`; strafes at the 25 mm box and drives at the table edge above the cap; must stop short of both, under 8 cm |
 | `test_safety_chain.py` | launches Gazebo headless and drives through the safety chain: forward to a wall at the speed cap and stops short, slides along it at the side cap into a corner, gets out both ways, diagonal in and out, spins in the open; the e-stop holds; straight back stays at the 0.15 m/s camera cap |

@@ -7,12 +7,16 @@ turns to the direction of travel, re-aimed only once that direction is
 robot) it holds the limit on the side it is already on. Stopped for
 ``sweep_after`` it sweeps +-``sweep_angle`` to look around. The command
 slews at ``pan_speed``, below the servo's 3.9 rad/s, so the sim turns like
-the real turret instead of jumping.
+the real turret instead of jumping. ``aim: false`` leaves the turret to
+whoever else commands it; the frames are still gated.
 
 Depth frames taken while the turret turns faster than ``steady_rate`` are
 smeared on the real camera, so only the others are passed on, from
-/tof_camera/depth_image to /tof_camera/depth_steady. Numbers:
-config/turret_gaze.yaml.
+/tof_camera/depth_image to /tof_camera/depth_steady, and at most
+``map_rate`` a second of them to /tof_camera/map/depth for the 3D map, each
+with its CameraInfo on /tof_camera/map/camera_info (image_transport pairs
+them by stamp).
+Numbers: config/turret_gaze.yaml.
 """
 
 import math
@@ -21,7 +25,7 @@ import rclpy
 from geometry_msgs.msg import TwistStamped
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Image, JointState
+from sensor_msgs.msg import CameraInfo, Image, JointState
 from std_msgs.msg import Float64MultiArray
 
 
@@ -66,7 +70,7 @@ class TurretGaze(Node):
             'rate': 50.0, 'deadband': 0.02, 'hysteresis': math.radians(10.0),
             'command_timeout': 0.5, 'pan_speed': 3.0, 'sweep_after': 1.0,
             'sweep_angle': math.radians(90.0), 'sweep_speed': 0.4,
-            'steady_rate': 0.5}
+            'steady_rate': 0.5, 'map_rate': 3.0, 'aim': True}
         for name, value in defaults.items():
             self.declare_parameter(name, value)
         self.p = {name: self.get_parameter(name).value for name in defaults}
@@ -76,11 +80,21 @@ class TurretGaze(Node):
         self.target = self.current = 0.0
         self.heading = 1.0
         self.pan_rate = math.inf  # unknown until /joint_states arrives
+        self.map_time = -math.inf
+        self.info = None
         self.output = self.create_publisher(
             Float64MultiArray, '/turret_controller/commands', 10)
         sensor = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.steady = self.create_publisher(
             Image, '/tof_camera/depth_steady', sensor)
+        # Reliable: depth_image_proc subscribes with the default QoS.
+        self.map_frames = self.create_publisher(
+            Image, '/tof_camera/map/depth', 5)
+        self.map_info = self.create_publisher(
+            CameraInfo, '/tof_camera/map/camera_info', 5)
+        self.create_subscription(
+            CameraInfo, '/tof_camera/camera_info',
+            lambda message: setattr(self, 'info', message), sensor)
         self.create_subscription(
             TwistStamped, '/cmd_vel_mux', self.on_command, 10)
         self.create_subscription(
@@ -103,11 +117,21 @@ class TurretGaze(Node):
                 self.pan_rate = abs(message.velocity[i])
 
     def on_depth(self, message):
-        if self.pan_rate <= self.p['steady_rate']:
-            self.steady.publish(message)
+        if self.pan_rate > self.p['steady_rate']:
+            return
+        self.steady.publish(message)
+        now = self.now()
+        if self.info is not None \
+                and now - self.map_time >= 1.0 / self.p['map_rate']:
+            self.map_time = now
+            self.info.header = message.header
+            self.map_info.publish(self.info)
+            self.map_frames.publish(message)
 
     def on_timer(self):
         p, now = self.p, self.now()
+        if not p['aim']:
+            return
         vx, vy = self.command
         fresh = now - self.command_time <= p['command_timeout']
         dt = 1.0 / p['rate']
