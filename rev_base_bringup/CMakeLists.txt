@@ -71,6 +71,18 @@ if(BUILD_TESTING)
         "ROS_LOG_DIR=${CMAKE_CURRENT_BINARY_DIR}/ros_logs;ROS_DOMAIN_ID=34;GZ_PARTITION=mobile_base_camera_floor_test"
       RUN_SERIAL TRUE
   )
+
+  add_launch_test(
+    test/test_nav2.py
+    TIMEOUT 700
+  )
+  set_tests_properties(
+    test_test_nav2.py
+    PROPERTIES
+      ENVIRONMENT
+        "ROS_LOG_DIR=${CMAKE_CURRENT_BINARY_DIR}/ros_logs;ROS_DOMAIN_ID=35;GZ_PARTITION=mobile_base_nav2_test"
+      RUN_SERIAL TRUE
+  )
 endif()
 
 ament_package()

@@ -227,6 +227,7 @@ def generate_launch_description():
         [bringup_share, 'config', 'camera_floor.yaml'])
     camera_map_config = PathJoinSubstitution(
         [bringup_share, 'config', 'camera_map.yaml'])
+    nav2_config = PathJoinSubstitution([bringup_share, 'config', 'nav2.yaml'])
     tof_only = PythonExpression(
         ["'", LaunchConfiguration('mode'), "' == 'tof_only'"])
     tof_rows_config = PathJoinSubstitution(
@@ -455,6 +456,53 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration('camera_map')),
         ),
     ]
+    # Nav2 without a map (config/nav2.yaml, ADR 0005), into the safety chain
+    # on /cmd_vel_nav. Off in tof_only mode, where bug_nav takes the goals.
+    nav2_on = IfCondition(PythonExpression(
+        ["'", LaunchConfiguration('nav'), "' == 'true' and not ", tof_only]))
+    nav2_params = [nav2_config, sim_time]
+    nav2 = [
+        Node(
+            package='nav2_controller',
+            executable='controller_server',
+            parameters=nav2_params,
+            remappings=[('cmd_vel', '/cmd_vel_nav')],
+            output='screen',
+            condition=nav2_on,
+        ),
+        Node(
+            package='nav2_planner',
+            executable='planner_server',
+            parameters=nav2_params,
+            output='screen',
+            condition=nav2_on,
+        ),
+        Node(
+            package='nav2_behaviors',
+            executable='behavior_server',
+            parameters=nav2_params,
+            remappings=[('cmd_vel', '/cmd_vel_nav')],
+            output='screen',
+            condition=nav2_on,
+        ),
+        Node(
+            package='nav2_bt_navigator',
+            executable='bt_navigator',
+            parameters=[*nav2_params, {
+                'default_nav_to_pose_bt_xml': PathJoinSubstitution(
+                    [bringup_share, 'config', 'navigate.xml'])}],
+            output='screen',
+            condition=nav2_on,
+        ),
+        Node(
+            package='nav2_lifecycle_manager',
+            executable='lifecycle_manager',
+            name='lifecycle_manager_navigation',
+            parameters=nav2_params,
+            output='screen',
+            condition=nav2_on,
+        ),
+    ]
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -570,6 +618,13 @@ def generate_launch_description():
                     'Build the run-long 3D map (octomap) from the steady '
                     'depth frames.'),
             ),
+            DeclareLaunchArgument(
+                'nav',
+                default_value='true',
+                description=(
+                    'Run Nav2 without a map for RViz Goal Pose goals '
+                    '(not in tof_only mode).'),
+            ),
             DeclareLaunchArgument('x', default_value='0.0'),
             DeclareLaunchArgument('y', default_value='0.0'),
             DeclareLaunchArgument('z', default_value='0.10'),
@@ -593,6 +648,7 @@ def generate_launch_description():
             ekf,
             *safety_chain,
             *camera_map,
+            *nav2,
             RegisterEventHandler(
                 OnProcessExit(
                     target_action=generate_sdf,

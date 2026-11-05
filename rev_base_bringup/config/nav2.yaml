@@ -1,0 +1,454 @@
+# Nav2 without a map (ADR 0005): everything in odom, goals from RViz's Goal
+# Pose. Output: controller_server -> /cmd_vel_nav (TwistStamped) -> twist_mux
+# -> safety_governor, so teleop overrides it and the governor still limits it.
+# Servers: planner, controller, behavior (wait only), bt_navigator. No map
+# server, AMCL, smoother, velocity smoother or collision monitor: the
+# governor is the safety net.
+
+bt_navigator:
+  ros__parameters:
+    global_frame: odom
+    robot_base_frame: base_footprint
+    odom_topic: /odometry/filtered
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    wait_for_service_timeout: 1000
+    navigators: ["navigate_to_pose"]
+    navigate_to_pose:
+      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
+    # default_nav_to_pose_bt_xml: config/navigate.xml, set in the launch.
+    error_code_names: ["compute_path_error_code", "follow_path_error_code"]
+
+controller_server:
+  ros__parameters:
+    controller_frequency: 20.0
+    odom_topic: /odometry/filtered
+    enable_stamped_cmd_vel: true
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["goal_checker"]
+    controller_plugins: ["FollowPath"]
+    # The governor creeps at 0.03 m/s near walls and caps 0.15 m/s until
+    # the camera has looked: 0.3 m in 15 s is still progress.
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.3
+      movement_time_allowance: 15.0
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      stateful: true
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.25
+    # Faces the path first: on each new goal, if the path leaves more than
+    # 20 deg (the governor's look_tolerance) off the nose, turn in place to
+    # it, then hand over to MPPI. Turning in place keeps the turret camera
+    # ahead of the robot from the first metre.
+    FollowPath:
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "nav2_mppi_controller::MPPIController"
+      angular_dist_threshold: 0.35
+      angular_disengage_threshold: 0.1
+      forward_sampling_distance: 0.5
+      rotate_to_heading_angular_vel: 1.0
+      max_angular_accel: 3.0
+      simulate_ahead_time: 1.0
+      rotate_to_heading_once: true
+      rotate_to_goal_heading: false
+      motion_model: "Omni"
+      # model_dt = the control period. Horizon 56 x 0.05 s x 0.3 m/s =
+      # 0.84 m, inside the 3 m local costmap.
+      time_steps: 56
+      model_dt: 0.05
+      batch_size: 1000
+      iteration_count: 1
+      # Below the governor's 0.45 m/s cap. Backward is a last resort: the
+      # rear is beyond the turret camera's reach (+-135 deg pan), so it is
+      # slow and PreferForwardCritic makes MPPI turn or strafe instead.
+      # Forbidding it outright (vx_min 0) wedged the robot nose-in at a wall
+      # end. Sideways stays: the turret looks +-90 deg.
+      vx_max: 0.3
+      vx_min: -0.1
+      vy_max: 0.3
+      wz_max: 1.5
+      ax_max: 1.5
+      ax_min: -1.5
+      ay_max: 1.5
+      ay_min: -1.5
+      az_max: 3.0
+      vx_std: 0.2
+      vy_std: 0.2
+      wz_std: 0.4
+      temperature: 0.3
+      gamma: 0.015
+      prune_distance: 1.0
+      transform_tolerance: 0.1
+      visualize: false
+      regenerate_noises: true
+      critics: ["ConstraintCritic", "CostCritic", "GoalCritic",
+                "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic",
+                "PathAngleCritic", "PreferForwardCritic"]
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 15.0
+        threshold_to_consider: 0.5
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.0
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      # The hull is a rectangle, not a circle: check the footprint.
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.81
+        near_collision_cost: 253
+        critical_cost: 300.0
+        consider_footprint: true
+        collision_cost: 1000000.0
+        near_goal_distance: 0.5
+        trajectory_point_step: 2
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 1.0
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        # Forward preference: keep the nose (and the camera) along the path,
+        # turning once the path ahead is 20 deg off it (the governor's
+        # look_tolerance). No TwirlingCritic: it held the heading fixed and
+        # the robot crabbed sideways round bends.
+        max_angle_to_furthest: 0.35
+        mode: 0
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    # Nav2's planner for circular and omnidirectional robots.
+    GridBased:
+      plugin: "nav2_smac_planner::SmacPlanner2D"
+      tolerance: 0.125
+      downsample_costmap: false
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0
+      cost_travel_multiplier: 2.0
+      use_final_approach_orientation: false
+
+# Wait only: no Spin or BackUp until braking and clearance are known on the
+# real robot (navigate.xml).
+behavior_server:
+  ros__parameters:
+    local_frame: odom
+    global_frame: odom
+    robot_base_frame: base_footprint
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["wait"]
+    wait:
+      plugin: "nav2_behaviors::Wait"
+
+# Rolling 3 x 3 m round the robot. Unknown counts as free here: most of the
+# window is unseen with sparse sensors, and MPPI scores unknown as lethal.
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      global_frame: odom
+      robot_base_frame: base_footprint
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05
+      track_unknown_space: false
+      # safety_governor's hull with wheels (half_length, half_width).
+      footprint: "[[0.15, 0.11], [0.15, -0.11], [-0.15, -0.11], [-0.15, 0.11]]"
+      plugins: ["stvl_layer", "inflation_layer"]
+      stvl_layer:
+        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
+        # Seen points fade after 15 s unless seen again; a sensor that looks
+        # and sees nothing clears them in about 1 s (decay_acceleration).
+        voxel_decay: 15.0
+        decay_model: 0
+        voxel_size: 0.05
+        track_unknown_space: false
+        mark_threshold: 0
+        update_footprint_enabled: true
+        combination_method: 1
+        origin_z: 0.0
+        transform_tolerance: 0.2
+        observation_sources: tof_front tof_rear tof_left tof_right camera hazards
+        # Each ToF face: rows 4-6 (tof_rows.yaml), 60 x 22.5 deg about the
+        # level row 5. Heights as safety_governor: 0.02 m drops floor hits
+        # (row 4 meets the floor at 0.24 m), 0.20 m clears the turret.
+        # No-target zones are NaN, so only the frustum clears behind them.
+        tof_front:
+          topic: /tof/front/rows
+          sensor_frame: tof_front_rows_frame
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          min_obstacle_height: 0.02
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.02
+          max_z: 2.0
+          horizontal_fov_angle: 1.047
+          vertical_fov_angle: 0.393
+          decay_acceleration: 15.0
+          model_type: 0
+        tof_rear:
+          topic: /tof/rear/rows
+          sensor_frame: tof_rear_rows_frame
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          min_obstacle_height: 0.02
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.02
+          max_z: 2.0
+          horizontal_fov_angle: 1.047
+          vertical_fov_angle: 0.393
+          decay_acceleration: 15.0
+          model_type: 0
+        tof_left:
+          topic: /tof/left/rows
+          sensor_frame: tof_left_rows_frame
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          min_obstacle_height: 0.02
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.02
+          max_z: 2.0
+          horizontal_fov_angle: 1.047
+          vertical_fov_angle: 0.393
+          decay_acceleration: 15.0
+          model_type: 0
+        tof_right:
+          topic: /tof/right/rows
+          sensor_frame: tof_right_rows_frame
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          min_obstacle_height: 0.02
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.02
+          max_z: 2.0
+          horizontal_fov_angle: 1.047
+          vertical_fov_angle: 0.393
+          decay_acceleration: 15.0
+          model_type: 0
+        # Turret camera: the steady 3 Hz frames the 3D map uses (optical
+        # frame, 62.8 x 37.9 deg). 0.03 m sits above camera_floor's +-2 cm
+        # floor band. Out to 2 m, as camera_floor: further, pitch error
+        # lifts the floor.
+        camera:
+          topic: /tof_camera/map_points
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          filter: voxel
+          min_obstacle_height: 0.03
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.2
+          max_z: 2.0
+          horizontal_fov_angle: 1.096
+          vertical_fov_angle: 0.661
+          decay_acceleration: 15.0
+          model_type: 0
+        # camera_floor's drops and low obstacles: odom points at z = 0,
+        # ranged from the robot. Marking only.
+        hazards:
+          topic: /tof_camera/hazards
+          sensor_frame: base_footprint
+          data_type: PointCloud2
+          marking: true
+          clearing: false
+          clear_after_reading: true
+          min_obstacle_height: -0.01
+          max_obstacle_height: 0.01
+          obstacle_range: 3.0
+      # Inscribed 0.11 m, circumscribed 0.19 m. 0.3 m keeps a free centre
+      # line in a 0.9 m gap (0.4 m made MPPI crawl through one).
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.3
+        cost_scaling_factor: 8.0
+      always_send_full_costmap: true
+
+# Fixed 20 x 20 m centred on the start, kept for the run (not rolling):
+# what was seen stays until a sensor looks again and sees it gone. Goals
+# outside it are rejected. Unknown is tracked and the planner may cross it.
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      global_frame: odom
+      robot_base_frame: base_footprint
+      update_frequency: 2.0
+      publish_frequency: 1.0
+      rolling_window: false
+      width: 20
+      height: 20
+      origin_x: -10.0
+      origin_y: -10.0
+      resolution: 0.05
+      track_unknown_space: true
+      footprint: "[[0.15, 0.11], [0.15, -0.11], [-0.15, -0.11], [-0.15, 0.11]]"
+      plugins: ["stvl_layer", "inflation_layer"]
+      stvl_layer:
+        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
+        # Persistent: cleared only by a frustum that looks and sees nothing.
+        voxel_decay: 15.0
+        decay_model: -1
+        voxel_size: 0.05
+        track_unknown_space: true
+        mark_threshold: 0
+        update_footprint_enabled: true
+        combination_method: 1
+        origin_z: 0.0
+        transform_tolerance: 0.2
+        observation_sources: tof_front tof_rear tof_left tof_right camera hazards
+        tof_front:
+          topic: /tof/front/rows
+          sensor_frame: tof_front_rows_frame
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          min_obstacle_height: 0.02
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.02
+          max_z: 2.0
+          horizontal_fov_angle: 1.047
+          vertical_fov_angle: 0.393
+          decay_acceleration: 15.0
+          model_type: 0
+        tof_rear:
+          topic: /tof/rear/rows
+          sensor_frame: tof_rear_rows_frame
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          min_obstacle_height: 0.02
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.02
+          max_z: 2.0
+          horizontal_fov_angle: 1.047
+          vertical_fov_angle: 0.393
+          decay_acceleration: 15.0
+          model_type: 0
+        tof_left:
+          topic: /tof/left/rows
+          sensor_frame: tof_left_rows_frame
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          min_obstacle_height: 0.02
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.02
+          max_z: 2.0
+          horizontal_fov_angle: 1.047
+          vertical_fov_angle: 0.393
+          decay_acceleration: 15.0
+          model_type: 0
+        tof_right:
+          topic: /tof/right/rows
+          sensor_frame: tof_right_rows_frame
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          min_obstacle_height: 0.02
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.02
+          max_z: 2.0
+          horizontal_fov_angle: 1.047
+          vertical_fov_angle: 0.393
+          decay_acceleration: 15.0
+          model_type: 0
+        camera:
+          topic: /tof_camera/map_points
+          data_type: PointCloud2
+          marking: true
+          clearing: true
+          clear_after_reading: true
+          filter: voxel
+          min_obstacle_height: 0.03
+          max_obstacle_height: 0.20
+          obstacle_range: 2.0
+          min_z: 0.2
+          max_z: 2.0
+          horizontal_fov_angle: 1.096
+          vertical_fov_angle: 0.661
+          decay_acceleration: 15.0
+          model_type: 0
+        hazards:
+          topic: /tof_camera/hazards
+          sensor_frame: base_footprint
+          data_type: PointCloud2
+          marking: true
+          clearing: false
+          clear_after_reading: true
+          min_obstacle_height: -0.01
+          max_obstacle_height: 0.01
+          obstacle_range: 3.0
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.3
+        cost_scaling_factor: 8.0
+      always_send_full_costmap: true
+
+lifecycle_manager_navigation:
+  ros__parameters:
+    autostart: true
+    node_names: ["controller_server", "planner_server", "behavior_server",
+                 "bt_navigator"]

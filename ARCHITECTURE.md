@@ -3,7 +3,7 @@
 ROS 2 Jazzy, Gazebo Harmonic, one un-namespaced robot. The URDF robot name is
 `mobile_base`. The scope is the robot model (Rev D v4 with the type_04M_Ardu
 pan turret, CAD `Rev_D_T4M_ardu`), its ToF sensors and IMU, manual driving,
-turret panning, wheel + gyro odometry, the ToF safety chain and a ToF-only bug navigator for failsafe goals; nothing maps yet. There is no LiDAR.
+turret panning, wheel + gyro odometry, the ToF safety chain, Nav2 to goals clicked in RViz without a map, a run-long 3D camera map and a ToF-only bug navigator for failsafe goals. There is no LiDAR.
 
 ## Package map
 
@@ -11,14 +11,14 @@ turret panning, wheel + gyro odometry, the ToF safety chain and a ToF-only bug n
 | --- | --- |
 | `rev_base_description` | `urdf/` Xacro model, `meshes/rev_d/` (installed from the repo root), `rviz/`, `display.launch.py` for the model alone, `scripts/import_rev_d_meshes.py` |
 | `rev_base_gazebo` | `worlds/my_world.sdf` (10 × 10 m apartment), `worlds/navigation_basic.sdf` (room with an interior wall), `worlds/failsafe_course.sdf` (long wall, U-trap, closed box), `worlds/ledge_course.sdf` (0.2 m table with open edges and a 25 mm box) |
-| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `config/safety.yaml`, `config/bug_nav.yaml`, `config/turret_gaze.yaml`, `config/camera_floor.yaml`, `config/camera_map.yaml`, `scripts/generate_sim_sdf.py` |
+| `rev_base_bringup` | `simulation.launch.py`, `camera_view.launch.py`, `config/controllers.yaml`, `config/safety.yaml`, `config/bug_nav.yaml`, `config/turret_gaze.yaml`, `config/camera_floor.yaml`, `config/camera_map.yaml`, `config/nav2.yaml`, `config/navigate.xml`, `scripts/generate_sim_sdf.py` |
 | `rev_base_tools` | `safety_governor`, `turret_gaze`, `camera_floor`, `bug_nav`, `tof_sim`, `tof_rows`, `tof_ray_markers`, `tof_camera_points`, `tof_depth_colour`, `stop_simulation`, `imu_bias`, `odom_eval`, `odom_eval_plot`; `config/tof_rows.yaml`, `config/tof_sim.yaml` |
 
 ## Runtime data flow
 
 ```text
 teleop_twist_keyboard --> /cmd_vel_teleop --+
-(Nav2, later)         --> /cmd_vel_nav    --+--> twist_mux --> /cmd_vel_mux
+Nav2 controller_server --> /cmd_vel_nav --+--> twist_mux --> /cmd_vel_mux
 /e_stop (Bool lock)                       --+         |
                                                       v
 /tof/<face>/rows --------------------------> safety_governor
@@ -62,6 +62,7 @@ Gazebo sensors --> ros_gz_bridge
 ```text
 odom --(ekf_filter_node)--> base_footprint --> base_link
                                                           +-- tof_front_link, tof_rear_link, tof_left_link, tof_right_link
+                                                          +-- tof_<face>_rows_frame (level, optical axes: the kept rows' view, for STVL)
                                                           +-- imu_link
                                                           +-- four *_wheel_link (from /joint_states)
                                                           +-- turret_link (turret_pan_joint, from /joint_states)
@@ -284,6 +285,7 @@ Arguments:
 | `gaze` | `true` | `turret_gaze` aims the turret; `false` leaves it to `/turret_controller/commands` (frames are still gated) |
 | `camera_map` | `true` | build the run-long 3D map |
 | `mode` | `normal` | `tof_only`: the failsafe (below) and `bug_nav` |
+| `nav` | `true` | Nav2 without a map (below); never in `tof_only` mode |
 | `x`, `y`, `z`, `yaw` | `0, 0, 0.10, 0` | spawn pose |
 | `use_sim_time` | `true` | Gazebo clock for every node |
 
@@ -357,6 +359,68 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 - `odom_eval` publishes straight to the controller, bypassing the chain: it
   is an evaluation tool for open floor.
 
+## Navigation (Nav2 without a map)
+
+`config/nav2.yaml`, ADR 0005. No map server, AMCL or `map` frame: every
+server works in `odom`, so goals and costmaps drift together with the
+odometry (about 2 % of distance). Goals come from RViz's Goal Pose
+(`/goal_pose`, `odom`), any number per run.
+
+- **Servers.** `planner_server`, `controller_server`, `behavior_server`
+  (Wait only), `bt_navigator`, under `lifecycle_manager_navigation`. The
+  controller publishes stamped on `/cmd_vel_nav`, so twist_mux and the
+  safety governor sit between Nav2 and the wheels. No velocity smoother or
+  collision monitor: the governor does both jobs.
+- **Behaviour tree.** `config/navigate.xml` is Nav2's recovery tree
+  without Spin and BackUp, replanning (checked at 1 Hz) only when the path
+  turns invalid or the goal changes: replanning every second through
+  half-seen space flipped between two routes round a wall and the robot
+  dithered between them. A failure clears the local costmap and waits. The global costmap is never cleared, since it is what the robot
+  has seen. Motion recoveries wait until braking is measured on hardware.
+- **Planner.** Smac 2D, `allow_unknown`, 0.125 m tolerance.
+- **Controller.** MPPI `Omni`, 20 Hz, 1000 samples over 56 x 0.05 s,
+  inside Nav2's rotation shim. The camera only pans ±135°, so travel is
+  kept where it can look:
+  - **Face the path first.** On each new goal, a path leaving more than 20°
+    off the nose (the governor's look tolerance) makes the shim turn in
+    place to it at 1 rad/s, then hand over to MPPI. The first 0.5 m of the
+    path sets the direction, not the straight line to the goal.
+  - **Nose along the path.** MPPI's path-angle critic in forward mode turns
+    the robot once the path ahead is 20° off the nose. No twirling critic:
+    it held the heading and the robot crabbed round bends.
+  - **Backing is a last resort.** At most 0.1 m/s back, and a heavy
+    prefer-forward critic. Forbidding it outright wedged the robot nose-in
+    at a wall end.
+  - 0.3 m/s forward and sideways, 1.5 rad/s. The cost critic checks the
+    hull rectangle (±0.15 × ±0.11 m).
+- **Local costmap.** Rolling 3 × 3 m at 5 cm. Unknown counts as free: most
+  of it is unseen with sparse sensors, and MPPI would avoid it.
+- **Global costmap.** Fixed 20 × 20 m centred on the start, kept for the
+  run; unknown is tracked, and the planner may cross it. Goals outside it
+  are rejected.
+- **Obstacles.** One STVL layer per costmap; voxels clear when a sensor's
+  frustum looks and does not see them again (decay acceleration 15/s³,
+  about 2 s). Local voxels also fade after 15 s; global ones persist.
+  Sources:
+  - each ToF face's rows, 0.02-0.20 m up (as the governor), out to 2 m.
+    The rows sit above the pitched sensor axis, so the frustum (60 ×
+    22.5°) hangs on `tof_<face>_rows_frame`: optical axes, level, at the
+    aperture. No-return zones are NaN, so only the frustum clears.
+  - the camera's steady 3 Hz cloud (`/tof_camera/map_points`, the 3D
+    map's input), 0.03-0.20 m up, out to 2 m, frustum 62.8 × 37.9°. Needs
+    `camera_map:=true`.
+  - `camera_floor`'s hazard grid (drops and low obstacles, z = 0), marking
+    only. A hazard that leaves camera_floor's 3 m memory stays in the
+    global costmap until a frustum clears it.
+- **Inflation.** 0.3 m, cost scaling 8: 0.4 m left no cheap line through
+  the 0.9 m gap at the interior wall's end, and MPPI crawled there.
+- **Checks.** Progress is 0.3 m in 15 s: the governor creeps at 0.03 m/s
+  near walls and holds 0.15 m/s until the camera has looked. Goal reached
+  within 0.15 m and 0.25 rad.
+- **Gaps.** The sim ToF casts one ray per zone, 7.5° apart, so a thin leg
+  between rays can be cleared by the ToF frustum while the camera marks it.
+  MPPI's rate on a Pi is unmeasured.
+
 ## ToF-only failsafe
 
 `mode:=tof_only`, for when only the ToF ring can be trusted.
@@ -422,6 +486,7 @@ it should strafe. `test_mecanum_wheel_contact.py` checks the generated SDF.
 | Change the safety chain | `config/safety.yaml`, `safety_governor.py`, then `test_safety_governor.py` and `test_safety_chain.py` |
 | Change the 3D camera map | `config/camera_map.yaml`, `map_rate` in `config/turret_gaze.yaml`, then `test_sensor_topics.py` |
 | Change the camera floor classifier | `config/camera_floor.yaml`, `camera_floor.py`, then `test_camera_floor.py` (both) |
+| Change Nav2 | `config/nav2.yaml`, `config/navigate.xml`, then `test_nav2.py` |
 | Change the ToF-only failsafe | `config/bug_nav.yaml`, `bug_nav.py`, `axis_only` in `safety_governor.py`, then `test_bug_nav.py` (both) |
 | Change the odometry fusion | `config/ekf.yaml` or `imu_bias.py`, then `odom_eval` |
 | Change the RViz view | `rev_base_description/rviz/mobile_base_sim.rviz` |
