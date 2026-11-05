@@ -46,7 +46,9 @@ This opens three windows:
 - the Gazebo window
 - RViz, with `odom` as the fixed frame
 - one window with the ToF camera depth colour-graded: near is red, far is blue,
-  no return is black
+  no return is black. While the robot moves, the path it is commanded along
+  is drawn on the floor in white: the hull outline every 0.25 m out to 1 m,
+  and each corner's track
 
 The arguments (`gui`, `rviz`, `camera_windows`, `tof_markers`, spawn pose, and
 the rest) are listed in [ARCHITECTURE.md](ARCHITECTURE.md#simulation-launch).
@@ -247,7 +249,7 @@ colcon test-result --verbose
 | `test_bug_nav.py` | launches Gazebo headless in `failsafe_course` with `mode:=tof_only` and sends four goals: behind the long wall, a staging point, out of the U-trap, inside the closed box; each must be reached within 0.2 m (or come back unreachable) without touching anything |
 | `test_camera_floor.py` | launches Gazebo headless in `ledge_course`; strafes at the 25 mm box and drives at the table edge above the cap; must stop short of both, under 8 cm |
 | `test_safety_chain.py` | launches Gazebo headless and drives through the safety chain: forward to a wall at the speed cap and stops short, slides along it at the side cap into a corner, gets out both ways, diagonal in and out, spins in the open; the e-stop holds; straight back stays at the 0.15 m/s camera cap |
-| `rev_base_tools/test/` | camera floor (floor, ledge, no return, low box, overhang, grid memory), turret gaze (aim, hysteresis, rear wedge, sweep, slew), camera look cap, bug navigator (leave rule, hand-rule axis choice), safety governor (ToF-only snapping, point memory frame, braking speed, swept path, clearance at an angle, turning, silent faces), ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
+| `rev_base_tools/test/` | drive-path overlay (path integration, corner tracks, projection, drawing), camera floor (floor, ledge, no return, low box, overhang, grid memory), turret gaze (aim, hysteresis, rear wedge, sweep, slew), camera look cap, bug navigator (leave rule, hand-rule axis choice), safety governor (ToF-only snapping, point memory frame, braking speed, swept path, clearance at an angle, turning, silent faces), ToF noise and dropout, grid order, row selection, depth colouring, `stop_simulation` matching, odometry scoring, gyro bias estimation |
 
 `test_sensor_topics.py`, `test_safety_chain.py`, `test_camera_floor.py` and `test_bug_nav.py` each run on their own
 `ROS_DOMAIN_ID` and `GZ_PARTITION`, set in `rev_base_bringup/CMakeLists.txt`,

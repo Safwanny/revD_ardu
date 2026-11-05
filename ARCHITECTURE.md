@@ -47,7 +47,7 @@ Gazebo sensors --> ros_gz_bridge
         /tof_camera/depth_image ---> turret_gaze ---> /tof_camera/depth_steady ---> camera_floor
                 camera_floor ---> /tof_camera/hazards (odom grid) ---> safety_governor
                 camera_floor ---> /tof_camera/hazard_distance
-        /tof_camera/depth_image ---> tof_depth_colour ---> /tof_camera/depth_colour ---> rqt_image_view
+        /tof_camera/depth_image + /mobile_base_controller/reference ---> tof_depth_colour ---> /tof_camera/depth_colour ---> rqt_image_view
         /tof_camera/image, /tof_camera/camera_info, /clock
         /imu/data  (BNO085 stand-in, 100 Hz, no orientation)
         /ground_truth/odom  (Gazebo true pose; evaluation only, never /tf)
@@ -194,6 +194,17 @@ from the pan joint, about 102 mm off the ground.
 - **Real driver.** Arducam's own ROS 2 node publishes no `Image` or
   `CameraInfo`, and hard-codes the frame `map`. The real camera will need a
   node of our own.
+
+### Drive-path overlay
+
+`tof_depth_colour` draws the commanded path on the colour-graded depth,
+like a car's parking overlay, while the robot moves (over 0.01 m/s on
+`/mobile_base_controller/reference`, the governed command). It integrates
+that twist over 1 m of travel and draws the hull outline every 0.25 m and
+the track of each corner on the floor (`base_footprint` z = 0), projected
+through TF and the camera intrinsics, so it stays on the floor as the turret
+pans. Points closer than 5 cm in front of the lens are not drawn. The floor
+is only in view from about 0.3 m out, so a tight arc mostly leaves the view.
 
 ### Camera floor classifier
 
