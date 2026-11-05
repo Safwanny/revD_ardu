@@ -31,6 +31,7 @@ setup(
         'safety_governor = rev_base_tools.safety_governor:main',
         'bug_nav = rev_base_tools.bug_nav:main',
         'turret_gaze = rev_base_tools.turret_gaze:main',
+        'camera_floor = rev_base_tools.camera_floor:main',
         'tof_camera_points = rev_base_tools.tof_camera_points:main',
         'tof_depth_colour = rev_base_tools.tof_depth_colour:main',
         'stop_simulation = rev_base_tools.stop_simulation:main',

@@ -1,0 +1,20 @@
+# rev_base_tools camera_floor: sorts each steady turret-camera depth frame by
+# height above the floor it expects (ADR 0004) and keeps drops and low
+# obstacles on an odom grid for safety_governor.
+camera_floor:
+  ros__parameters:
+    # Height bands (m). The hull's underside is 11.56 mm up and the ToF ring
+    # (32 mm, row 4 meeting the floor at 0.24 m) misses what is lower than
+    # about 3 cm until it is a few cm away, so the camera owns 2-15 cm.
+    floor_tolerance: 0.02
+    drop_depth: 0.03
+    obstacle_min: 0.02
+    obstacle_max: 0.15
+    # Classify only out to here (m): a 0.5 deg pitch while braking is 1.7 cm
+    # of height at 2 m, inside floor_tolerance. Far mode reaches 4 m.
+    max_range: 2.0
+    # Grid square (m) and how far from the camera squares are kept.
+    cell: 0.02
+    memory_radius: 3.0
+    # Hull half width with wheels, as in safety.yaml, for hazard_distance.
+    half_width: 0.11
