@@ -355,7 +355,11 @@ class SafetyGovernor(Node):
 
     def on_command(self, message):
         out = TwistStamped()
-        out.header = message.header
+        out.header.frame_id = message.header.frame_id
+        # Our own clock, not the input's: the controller times a command out
+        # by its stamp, and a sender on another clock (wall time against sim
+        # time) would make every command look fresh forever.
+        out.header.stamp = self.get_clock().now().to_msg()
         pose = self.tof.pose()
         if pose is None:
             # No pose, no memory: publish zero rather than drive blind.
