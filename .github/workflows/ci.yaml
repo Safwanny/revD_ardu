@@ -34,6 +34,7 @@ jobs:
           colcon build --symlink-install --packages-select \
             rev_base_description rev_base_gazebo rev_base_tools rev_base_bringup
 
+      # CI runs the safety chain and Nav2 sims only; run the rest locally (GUIDE.md).
       - name: Run deterministic package tests
         working-directory: /tmp/mobile_base_ws
         shell: bash
@@ -42,7 +43,7 @@ jobs:
           source install/setup.bash
           colcon test --event-handlers console_cohesion+ --packages-select \
             rev_base_description rev_base_gazebo rev_base_tools rev_base_bringup \
-            --ctest-args -E test_test_sensor_topics.py
+            --ctest-args -E 'test_test_(sensor_topics|bug_nav|camera_floor)\.py'
           colcon test-result --verbose
 
       - name: Validate Python and URDF
