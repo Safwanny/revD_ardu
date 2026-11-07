@@ -23,7 +23,7 @@ generated `/tmp/mobile_base_*` files. `--dry-run` lists what it would stop.
 
 ```bash
 cd ~/ros2_ws
-rosdep install --from-paths src/rev_mobile_base --ignore-src -r -y
+rosdep install --from-paths src/revD_ardu --ignore-src -r -y
 source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install --packages-up-to rev_base_bringup \
   --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3

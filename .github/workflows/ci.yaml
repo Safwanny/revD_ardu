@@ -24,7 +24,7 @@ jobs:
       - name: Create isolated workspace
         run: |
           mkdir -p /tmp/mobile_base_ws/src
-          ln -s "$GITHUB_WORKSPACE" /tmp/mobile_base_ws/src/rev_mobile_base
+          ln -s "$GITHUB_WORKSPACE" /tmp/mobile_base_ws/src/revD_ardu
 
       - name: Build packages
         working-directory: /tmp/mobile_base_ws

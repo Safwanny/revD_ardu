@@ -1,4 +1,4 @@
-# Rev Mobile Base — Mecanum 01 Rev D in ROS 2
+# revD_ardu — Mecanum 01 Rev D (Arducam turret) in ROS 2
 
 The Rev D build of a four-wheel mecanum robot, simulated in ROS 2 Jazzy and
 Gazebo Harmonic. It was split on 2026-10-31 from
